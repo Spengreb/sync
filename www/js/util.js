@@ -2704,7 +2704,8 @@ function execEmotes(msg) {
     }
 
     CHANNEL.emotes.forEach(function (e) {
-        msg = msg.replace(e.regex, '$1' + emoteToImg(e).outerHTML);
+        var el = e.image.endsWith('.mp4') ? emoteToVideo(e) : emoteToImg(e);
+        msg = msg.replace(e.regex, '$1' + el.outerHTML);
     });
 
     return msg;
@@ -2712,16 +2713,20 @@ function execEmotes(msg) {
 
 function execEmotesEfficient(msg) {
     CHANNEL.badEmotes.forEach(function (e) {
-        msg = msg.replace(e.regex, '$1' + emoteToImg(e).outerHTML);
+        var el = e.image.endsWith('.mp4') ? emoteToVideo(e) : emoteToImg(e);
+        msg = msg.replace(e.regex, '$1' + el.outerHTML);
     });
+
     msg = msg.replace(/[^\s]+/g, function (m) {
         if (CHANNEL.emoteMap.hasOwnProperty(m)) {
             var e = CHANNEL.emoteMap[m];
-            return emoteToImg(e).outerHTML;
+            var el = e.image.endsWith('.mp4') ? emoteToVideo(e) : emoteToImg(e);
+            return el.outerHTML;
         } else {
             return m;
         }
     });
+
     return msg;
 }
 
@@ -2731,6 +2736,25 @@ function emoteToImg(e) {
     img.title = e.name;
     img.src = e.image;
     return img;
+}
+
+function emoteToVideo(e) {
+    var video = document.createElement('video');
+    video.className = 'channel-emote';
+    video.setAttribute('autoplay', '');
+    video.setAttribute('loop', '');
+    video.setAttribute('muted', '');
+    video.setAttribute('playsinline', '');
+    video.muted = true;
+    video.style.width = '100%';
+    video.style.height = '100%';
+    
+    var source = document.createElement('source');
+    source.src = e.image;
+    source.type = 'video/mp4';
+
+    video.appendChild(source);
+    return video;
 }
 
 function initPm(user) {
@@ -3065,13 +3089,31 @@ EmoteList.prototype.loadPage = function (page) {
             hax.className = "emote-preview-hax";
             td.appendChild(hax);
 
-            var img = document.createElement("img");
-            img.src = emote.image;
-            img.className = "emote-preview";
-            img.title = emote.name;
-            img.onclick = _this.emoteClickCallback.bind(null, emote);
+            var el;
+            if (emote.image.endsWith('.mp4')) {
+                el = document.createElement("video");
+                el.className = "emote-preview";
+                el.autoplay = true;
+                el.loop = true;
+                el.muted = true;
+                el.playsInline = true;
+                el.width = 100;
+                el.height = 100;
 
-            td.appendChild(img);
+                var source = document.createElement("source");
+                source.src = emote.image;
+                source.type = "video/mp4";
+                el.appendChild(source);
+            } else {
+                el = document.createElement("img");
+                el.src = emote.image;
+            }
+
+            el.className = "emote-preview";
+            el.title = emote.name;
+            el.onclick = _this.emoteClickCallback.bind(null, emote);
+
+            td.appendChild(el);
             row.appendChild(td);
         })(this.emotes[i]);
     }
@@ -3206,12 +3248,20 @@ CSEmoteList.prototype.loadPage = function (page) {
             tdImage.appendChild(urlDisplay);
             row.appendChild(tdImage);
 
-            // Add popover to display the image
+            // Add popover to display the image or video
             var $urlDisplay = $(urlDisplay);
+            var isVideo = emote.image.endsWith('.mp4');
+
+            var popoverContent = isVideo
+                ? '<video class="channel-emote" autoplay loop muted playsinline width="100%" height="100%">' +
+                    '<source src="' + emote.image + '" type="video/mp4">' +
+                '</video>'
+                : '<img src="' + emote.image + '" class="channel-emote">';
+
             $urlDisplay.popover({
                 html: true,
                 trigger: "hover",
-                content: '<img src="' + emote.image + '" class="channel-emote">'
+                content: popoverContent
             });
 
             // Change the image for an emote
