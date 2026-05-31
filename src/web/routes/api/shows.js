@@ -4,6 +4,7 @@ const showDB = require('../../../database/shows');
 const shows = require('../../../shows');
 const botDB = require('../../../database/bots');
 const infoGetter = require('../../../get-info');
+const XSS = require('../../../xss');
 const { getChannelRow, getUserEffectiveRank, hashToken } = require('./middleware');
 
 const router = express.Router({ mergeParams: true });
@@ -19,6 +20,7 @@ const ACTION_MIN_RANK = {
     run: 3,
     cancel: 3
 };
+const PUBLIC_SHOW_STATUSES = new Set(['scheduled', 'running', 'paused', 'completed']);
 
 function sanitizePlaylist(list) {
     if (!Array.isArray(list)) return [];
@@ -100,9 +102,27 @@ function validateShowPayload(body, old = null) {
 
     const nextRunAt = status === 'scheduled' ? scheduledFor : (old ? old.next_run_at : scheduledFor);
 
+    const notesRaw = body.notes !== undefined ? body.notes : (old ? old.notes : null);
+    let notes = null;
+    if (typeof notesRaw === 'string' && notesRaw.trim() !== '') {
+        notes = XSS.sanitizeHTML(notesRaw.substring(0, 20000));
+    }
+
+    const colorRaw = body.color !== undefined ? body.color : (old ? old.color : null);
+    let color = null;
+    if (colorRaw !== null && colorRaw !== undefined && String(colorRaw).trim() !== '') {
+        const normalized = String(colorRaw).trim();
+        if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+            return { error: 'color must be a hex string like #1A2B3C' };
+        }
+        color = normalized.toUpperCase();
+    }
+
     return {
         value: {
             name,
+            notes,
+            color,
             playlist,
             timezone,
             scheduled_for: scheduledFor,
@@ -179,6 +199,18 @@ router.get('/', async (req, res) => {
 
     const showsList = await showDB.listShows(auth.channelRow.id);
     res.json(showsList);
+});
+
+router.get('/public', async (req, res) => {
+    let channelRow;
+    try {
+        channelRow = await getChannelRow(req.params.channel);
+    } catch (_err) {
+        return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    const showsList = await showDB.listShows(channelRow.id);
+    res.json(showsList.filter(show => PUBLIC_SHOW_STATUSES.has(show.status)));
 });
 
 router.get('/:id', async (req, res) => {

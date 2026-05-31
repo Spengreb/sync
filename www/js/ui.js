@@ -28,6 +28,24 @@ $("#togglemotd").on('click', function () {
     }
 });
 
+function updateScheduleToggleLabel() {
+    var row = $("#showschedule-row");
+    if (!row.length) return;
+    $("#toggleschedule").text(row.is(":visible") ? "Hide Schedule" : "Show Schedule");
+}
+
+$("#toggleschedule").on('click', function () {
+    var row = $("#showschedule-row");
+    if (!row.length) return;
+    var willShow = !row.is(":visible");
+    row.toggle();
+    if (willShow && window.CSTShows && typeof window.CSTShows.load === "function") {
+        window.CSTShows.load();
+    }
+    updateScheduleToggleLabel();
+});
+updateScheduleToggleLabel();
+
 /* chatbox */
 
 $("#modflair").on('click', function () {
@@ -1416,9 +1434,15 @@ var CSTShows = (function () {
     var draftPlaylist = [];
     var timezoneOptionsLoaded = false;
     var resolvingTitles = false;
+    var weekOffset = 0;
+    var cachedShows = [];
 
     function apiBase() {
         return '/api/v1/channels/' + CHANNEL.name + '/shows';
+    }
+
+    function publicApiBase() {
+        return apiBase() + '/public';
     }
 
     function loadTimezoneOptions() {
@@ -1604,11 +1628,21 @@ var CSTShows = (function () {
     function readFormPayload() {
         var scheduledRaw = $('#cs-shows-scheduled-for').val();
         var timezone = $('#cs-shows-timezone').val().trim();
+        var notes = $('#cs-shows-notes').val();
+        var colorHex = ($('#cs-shows-color-hex').val() || '').trim();
+        if (!colorHex) {
+            colorHex = ($('#cs-shows-color').val() || '').trim();
+        }
+        if (!/^#[0-9a-fA-F]{6}$/.test(colorHex || '')) {
+            colorHex = '';
+        }
         if (!timezone) {
             timezone = 'UTC';
         }
         return {
             name: $('#cs-shows-name').val().trim(),
+            notes: notes && notes.trim() ? notes : null,
+            color: colorHex ? colorHex.toUpperCase() : null,
             scheduled_for: scheduledRaw ? new Date(scheduledRaw).toISOString() : null,
             timezone: timezone,
             recurrence: $('#cs-shows-recurrence').val(),
@@ -1626,6 +1660,7 @@ var CSTShows = (function () {
         loadTimezoneOptions();
         selectedId = null;
         $('#cs-shows-name').val('');
+        $('#cs-shows-notes').val('');
         $('#cs-shows-scheduled-for').val('');
         var detectedTz = 'UTC';
         if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
@@ -1639,6 +1674,8 @@ var CSTShows = (function () {
         $('#cs-shows-fill-mode').val('append');
         $('#cs-shows-conflict-skip').prop('checked', false);
         $('#cs-shows-start-playback').prop('checked', false);
+        $('#cs-shows-color').val('#337AB7');
+        $('#cs-shows-color-hex').val('');
         $('#cs-shows-mediaurl').val('');
         draftPlaylist = [];
         renderDraftPlaylist();
@@ -1648,6 +1685,7 @@ var CSTShows = (function () {
         loadTimezoneOptions();
         selectedId = show.id;
         $('#cs-shows-name').val(show.name);
+        $('#cs-shows-notes').val(show.notes || '');
         $('#cs-shows-scheduled-for').val(toLocalDateInput(show.scheduled_for));
         var showTz = show.timezone || 'UTC';
         if ($('#cs-shows-timezone option[value="' + showTz + '"]').length === 0) {
@@ -1658,6 +1696,8 @@ var CSTShows = (function () {
         $('#cs-shows-fill-mode').val(show.fill_mode || 'append');
         $('#cs-shows-conflict-skip').prop('checked', (show.conflict_mode || 'force') === 'skip');
         $('#cs-shows-start-playback').prop('checked', !!show.start_playback);
+        $('#cs-shows-color').val(show.color || '#337AB7');
+        $('#cs-shows-color-hex').val(show.color || '');
         draftPlaylist = (show.playlist || []).map(function (item) {
             return {
                 id: item.id,
@@ -1668,6 +1708,125 @@ var CSTShows = (function () {
         });
         renderDraftPlaylist();
         resolveDraftTitles();
+    }
+
+    function openShowsEditor() {
+        showChannelSettings();
+        $("#channeloptions a[href='#cs-shows']").tab('show');
+    }
+
+    function prefillScheduledDate(date) {
+        clearForm();
+        selectedId = null;
+        $('#cs-shows-scheduled-for').val(toLocalDateInput(date.getTime()));
+    }
+
+    function weekStartFromOffset(offset) {
+        var d = new Date();
+        d.setHours(0, 0, 0, 0);
+        var day = d.getDay();
+        var mondayShift = (day + 6) % 7;
+        d.setDate(d.getDate() - mondayShift + (offset * 7));
+        return d;
+    }
+
+    function dayKey(date) {
+        return date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
+    }
+
+    function toCellKey(date) {
+        return dayKey(date) + '-' + date.getHours();
+    }
+
+    function renderScheduleCalendar(shows) {
+        var grid = $('#showschedule-grid');
+        if (!grid.length) return;
+
+        var weekStart = weekStartFromOffset(weekOffset);
+        var weekEnd = new Date(weekStart.getTime());
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        $('#showschedule-week-label').text(
+            weekStart.toLocaleDateString() + ' - ' + weekEnd.toLocaleDateString()
+        );
+
+        function openShowDetailsModal(show, when) {
+            $('#showdetails-title').text(show.name || 'Show Details');
+            $('#showdetails-time').text(when.toLocaleString());
+            $('#showdetails-status').text(show.status || 'scheduled');
+            var notes = (show.notes || '').trim();
+            if (!notes) {
+                $('#showdetails-notes').html('<p class="text-muted">No notes for this show.</p>');
+            } else {
+                $('#showdetails-notes').html(notes);
+            }
+            $('#showdetails').modal();
+        }
+
+        var byCell = {};
+        shows.forEach(function (show) {
+            var at = show.next_run_at || show.scheduled_for;
+            if (!at) return;
+            var d = new Date(at);
+            if (d < weekStart || d > new Date(weekEnd.getTime() + 86399999)) return;
+            var key = toCellKey(d);
+            if (!byCell[key]) byCell[key] = [];
+            byCell[key].push({ show: show, date: d });
+        });
+
+        var isAdmin = CLIENT.rank >= 2;
+        var table = $('<table class="table table-bordered table-condensed">');
+        var thead = $('<thead><tr><th class="showschedule-time-col">Time</th></tr></thead>').appendTo(table);
+        var hrow = thead.find('tr');
+        for (var i = 0; i < 7; i++) {
+            var day = new Date(weekStart.getTime());
+            day.setDate(weekStart.getDate() + i);
+            hrow.append($('<th>').text(day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })));
+        }
+
+        var tbody = $('<tbody>').appendTo(table);
+        for (var hour = 0; hour < 24; hour++) {
+            var tr = $('<tr>').appendTo(tbody);
+            tr.append($('<td class="showschedule-time-col text-muted">').text(String(hour).padStart(2, '0') + ':00'));
+            for (var col = 0; col < 7; col++) {
+                var cellDate = new Date(weekStart.getTime());
+                cellDate.setDate(weekStart.getDate() + col);
+                cellDate.setHours(hour, 0, 0, 0);
+                var key = toCellKey(cellDate);
+                var cell = $('<td class="showschedule-cell">').appendTo(tr);
+                if (isAdmin) {
+                    cell.addClass('showschedule-admin').attr('title', 'Click to create show at this time');
+                    (function (prefill) {
+                        cell.on('click', function (ev) {
+                            if ($(ev.target).closest('.showschedule-show').length) return;
+                            openShowsEditor();
+                            prefillScheduledDate(prefill);
+                        });
+                    })(new Date(cellDate.getTime()));
+                }
+
+                var items = byCell[key] || [];
+                items.sort(function (a, b) { return a.date - b.date; });
+                items.forEach(function (item) {
+                    var label = item.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + item.show.name;
+                    $('<a href="javascript:void(0)" class="showschedule-show">')
+                        .addClass('status-' + (item.show.status || 'scheduled'))
+                        .text(label)
+                        .css('background', item.show.color || '')
+                        .on('click', function () {
+                            if (isAdmin) {
+                                openShowsEditor();
+                                selectShow(item.show);
+                            } else {
+                                openShowDetailsModal(item.show, item.date);
+                            }
+                        })
+                        .appendTo(cell);
+                });
+            }
+        }
+
+        grid.empty().append(table);
+        $('#showschedule-empty').toggle(shows.length === 0);
     }
 
     function action(id, actionName) {
@@ -1733,8 +1892,18 @@ var CSTShows = (function () {
     }
 
     function load() {
-        $.getJSON(apiBase(), render).fail(function () {
-            $('#cs-shows-list').html('<tr><td colspan=\"6\" class=\"text-danger\">Failed to load shows</td></tr>');
+        var endpoint = CLIENT.rank >= 2 ? apiBase() : publicApiBase();
+        $.getJSON(endpoint, function (shows) {
+            cachedShows = Array.isArray(shows) ? shows : [];
+            if (CLIENT.rank >= 2) {
+                render(cachedShows);
+            }
+            renderScheduleCalendar(cachedShows);
+        }).fail(function () {
+            if (CLIENT.rank >= 2) {
+                $('#cs-shows-list').html('<tr><td colspan=\"6\" class=\"text-danger\">Failed to load shows</td></tr>');
+            }
+            $('#showschedule-grid').html('<div class=\"text-danger\">Failed to load schedule</div>');
         });
     }
 
@@ -1782,6 +1951,15 @@ var CSTShows = (function () {
         }
     });
     $('#cs-shows-clear').on('click', clearForm);
+    $('#cs-shows-color').on('change', function () {
+        $('#cs-shows-color-hex').val(($(this).val() || '').toUpperCase());
+    });
+    $('#cs-shows-color-hex').on('input', function () {
+        var v = ($(this).val() || '').trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+            $('#cs-shows-color').val(v);
+        }
+    });
     $('#cs-shows-playlist-list').sortable({
         update: function () {
             var nextDraft = [];
@@ -1797,8 +1975,21 @@ var CSTShows = (function () {
             }
         }
     }).disableSelection();
+    $('#showschedule-prev').on('click', function () {
+        weekOffset--;
+        renderScheduleCalendar(cachedShows);
+    });
+    $('#showschedule-next').on('click', function () {
+        weekOffset++;
+        renderScheduleCalendar(cachedShows);
+    });
+    $('#showschedule-today').on('click', function () {
+        weekOffset = 0;
+        renderScheduleCalendar(cachedShows);
+    });
     renderDraftPlaylist();
     clearForm();
+    load();
 
-    return { load: load };
+    return { load: load, selectShow: selectShow, prefillScheduledDate: prefillScheduledDate };
 })();
