@@ -217,4 +217,56 @@ export async function initTables() {
         t.string('banned_by', 20).notNullable();
         t.timestamps(/* useTimestamps */ true, /* defaultToNow */ true);
     });
+
+    await ensureTable('channel_calendar_integrations', t => {
+        t.charset('utf8');
+        t.increments('id').notNullable().primary();
+        t.integer('channel_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channels')
+            .onDelete('cascade');
+        t.string('provider', 32).notNullable();
+        t.string('status', 20).notNullable().defaultTo('disconnected');
+        t.specificType('config_json', 'text character set utf8mb4');
+        t.specificType('token_encrypted', 'text character set utf8mb4');
+        t.specificType('refresh_token_encrypted', 'text character set utf8mb4');
+        t.bigInteger('token_expires_at').nullable();
+        t.bigInteger('last_sync_at').nullable();
+        t.specificType('last_error', 'text character set utf8mb4');
+        t.bigInteger('created_at').notNullable();
+        t.bigInteger('updated_at').notNullable();
+        t.string('connected_by', 20).nullable();
+        t.string('updated_by', 20).nullable();
+        t.unique(['channel_id', 'provider'], 'channel_calendar_integration_unique');
+        t.index(['channel_id', 'provider'], 'channel_calendar_integration_lookup');
+    });
+
+    await ensureTable('channel_show_external_events', t => {
+        t.charset('utf8');
+        t.increments('id').notNullable().primary();
+        t.integer('channel_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channels')
+            .onDelete('cascade');
+        t.integer('show_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channel_shows')
+            .onDelete('cascade');
+        t.integer('integration_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channel_calendar_integrations')
+            .onDelete('cascade');
+        t.string('provider', 32).notNullable();
+        t.string('external_event_id', 255).notNullable();
+        t.string('external_etag', 255).nullable();
+        t.bigInteger('last_pushed_at').nullable();
+        t.bigInteger('created_at').notNullable();
+        t.bigInteger('updated_at').notNullable();
+        t.unique(['show_id', 'integration_id'], 'channel_show_external_event_unique');
+        t.index(['integration_id', 'provider'], 'channel_show_external_event_integration_idx');
+    });
 }

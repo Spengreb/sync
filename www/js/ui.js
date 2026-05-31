@@ -1993,3 +1993,119 @@ var CSTShows = (function () {
 
     return { load: load, selectShow: selectShow, prefillScheduledDate: prefillScheduledDate };
 })();
+
+var CSTIntegrations = (function () {
+    function csrfField() {
+        return (typeof CSRF_TOKEN === 'string' && CSRF_TOKEN.length > 0) ? CSRF_TOKEN : '';
+    }
+
+    function apiBase() {
+        return '/api/v1/channels/' + CHANNEL.name + '/integrations';
+    }
+
+    function formatError(xhr, fallback) {
+        var err = xhr && xhr.responseJSON && xhr.responseJSON.error;
+        if (!err) return fallback || (xhr && xhr.statusText) || 'Request failed';
+        if (typeof err === 'string') return err;
+        if (err.message && typeof err.message === 'string') return err.message;
+        try {
+            return JSON.stringify(err);
+        } catch (_e) {
+            return String(err);
+        }
+    }
+
+    function render(rows) {
+        var tbody = $('#cs-int-list').empty();
+        if (!Array.isArray(rows) || rows.length === 0) {
+            tbody.append('<tr><td colspan="6" class="text-muted">No integrations connected</td></tr>');
+            return;
+        }
+
+        rows.forEach(function (row) {
+            var calendarId = (row.config && row.config.calendar_id) ? row.config.calendar_id : '';
+            var tr = $('<tr>');
+            tr.append($('<td>').text(row.provider));
+            tr.append($('<td>').text(row.status));
+            tr.append($('<td>').text(calendarId || ''));
+            tr.append($('<td>').text(row.last_sync_at ? new Date(row.last_sync_at).toLocaleString() : 'Never'));
+            tr.append($('<td>').text(row.connected_by || ''));
+            tr.append($('<td>').text(row.last_error || ''));
+            tbody.append(tr);
+
+            if (row.provider === 'google') {
+                $('#cs-int-google-calendar-id').val(calendarId || '');
+            }
+        });
+    }
+
+    function load() {
+        $.getJSON(apiBase(), function (rows) {
+            render(rows);
+        }).fail(function (xhr) {
+            var msg = formatError(xhr, 'Failed to load integrations');
+            $('#cs-int-list').html('<tr><td colspan="6" class="text-danger">' + msg + '</td></tr>');
+        });
+    }
+
+    function connectGoogle() {
+        var calendarId = ($('#cs-int-google-calendar-id').val() || '').trim();
+        if (!calendarId) {
+            alert('Calendar ID is required');
+            return;
+        }
+        $.ajax({
+            url: apiBase() + '/google/connect',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                calendar_id: calendarId,
+                _csrf: csrfField()
+            })
+        }).done(function (data) {
+            if (!data || !data.auth_url) {
+                alert('Missing OAuth URL from server');
+                return;
+            }
+            window.open(data.auth_url, '_blank');
+        }).fail(function (xhr) {
+            alert('Connect failed: ' + formatError(xhr, 'Connect failed'));
+        });
+    }
+
+    function syncGoogleNow() {
+        $.ajax({
+            url: apiBase() + '/google/sync-now',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ _csrf: csrfField() })
+        }).done(function (data) {
+            load();
+            if (data && typeof data.synced === 'number') {
+                alert('Synced ' + data.synced + ' shows to Google Calendar');
+            }
+        }).fail(function (xhr) {
+            alert('Sync failed: ' + formatError(xhr, 'Sync failed'));
+        });
+    }
+
+    function disconnectGoogle() {
+        if (!confirm('Disconnect Google Calendar integration for this channel?')) return;
+        $.ajax({
+            url: apiBase() + '/google/disconnect',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ _csrf: csrfField() })
+        }).done(function () {
+            load();
+        }).fail(function (xhr) {
+            alert('Disconnect failed: ' + formatError(xhr, 'Disconnect failed'));
+        });
+    }
+
+    $('#cs-int-google-connect').on('click', connectGoogle);
+    $('#cs-int-google-sync').on('click', syncGoogleNow);
+    $('#cs-int-google-disconnect').on('click', disconnectGoogle);
+
+    return { load: load };
+})();
