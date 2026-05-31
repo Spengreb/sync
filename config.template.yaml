@@ -215,3 +215,14 @@ twitch-client-id: null
 
 poll:
   max-options: 50
+
+calendar-sync:
+  enabled: false
+  # 32-byte key encoded as base64. Prefer setting via env CALENDAR_SYNC_ENCRYPTION_KEY.
+  encryption-key: ''
+  google:
+    client-id: ''
+    client-secret: ''
+    # Must exactly match Google OAuth redirect URI
+    # Example: https://your-domain/api/v1/integrations/google/callback
+    redirect-uri: ''

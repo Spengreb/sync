@@ -3,7 +3,7 @@ import Promise from 'bluebird';
 
 const LOGGER = require('@calzoneman/jsli')('database/update');
 
-const DB_VERSION = 13;
+const DB_VERSION = 15;
 var hasUpdates = [];
 
 module.exports.checkVersion = function () {
@@ -55,6 +55,10 @@ function update(version, cb) {
         addUserInactiveColumn(cb);
     } else if (version < 13) {
         addShowsNotesAndColorColumns(cb);
+    } else if (version < 14) {
+        addCalendarIntegrationTables(cb);
+    } else if (version < 15) {
+        addCalendarIntegrationAuditColumns(cb);
     }
 }
 
@@ -163,6 +167,91 @@ function addShowsNotesAndColorColumns(cb) {
                         return;
                     }
 
+                    cb();
+                }
+            );
+        }
+    );
+}
+
+function addCalendarIntegrationTables(cb) {
+    db.query(
+        "CREATE TABLE IF NOT EXISTS channel_calendar_integrations (" +
+        "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+        "channel_id INT UNSIGNED NOT NULL," +
+        "provider VARCHAR(32) NOT NULL," +
+        "status VARCHAR(20) NOT NULL DEFAULT 'disconnected'," +
+        "config_json TEXT CHARACTER SET utf8mb4 NULL," +
+        "token_encrypted TEXT CHARACTER SET utf8mb4 NULL," +
+        "refresh_token_encrypted TEXT CHARACTER SET utf8mb4 NULL," +
+        "token_expires_at BIGINT NULL," +
+        "last_sync_at BIGINT NULL," +
+        "last_error TEXT CHARACTER SET utf8mb4 NULL," +
+        "created_at BIGINT NOT NULL," +
+        "updated_at BIGINT NOT NULL," +
+        "connected_by VARCHAR(20) NULL," +
+        "updated_by VARCHAR(20) NULL," +
+        "UNIQUE KEY channel_calendar_integration_unique (channel_id, provider)," +
+        "KEY channel_calendar_integration_lookup (channel_id, provider)," +
+        "CONSTRAINT fk_calendar_integrations_channel FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE" +
+        ") CHARACTER SET utf8",
+        error => {
+            if (error) {
+                LOGGER.error(`Failed to create channel_calendar_integrations table: ${error}`);
+                cb(error);
+                return;
+            }
+
+            db.query(
+                "CREATE TABLE IF NOT EXISTS channel_show_external_events (" +
+                "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+                "channel_id INT UNSIGNED NOT NULL," +
+                "show_id INT UNSIGNED NOT NULL," +
+                "integration_id INT UNSIGNED NOT NULL," +
+                "provider VARCHAR(32) NOT NULL," +
+                "external_event_id VARCHAR(255) NOT NULL," +
+                "external_etag VARCHAR(255) NULL," +
+                "last_pushed_at BIGINT NULL," +
+                "created_at BIGINT NOT NULL," +
+                "updated_at BIGINT NOT NULL," +
+                "UNIQUE KEY channel_show_external_event_unique (show_id, integration_id)," +
+                "KEY channel_show_external_event_integration_idx (integration_id, provider)," +
+                "CONSTRAINT fk_external_events_channel FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE," +
+                "CONSTRAINT fk_external_events_show FOREIGN KEY (show_id) REFERENCES channel_shows(id) ON DELETE CASCADE," +
+                "CONSTRAINT fk_external_events_integration FOREIGN KEY (integration_id) REFERENCES channel_calendar_integrations(id) ON DELETE CASCADE" +
+                ") CHARACTER SET utf8",
+                error => {
+                    if (error) {
+                        LOGGER.error(`Failed to create channel_show_external_events table: ${error}`);
+                        cb(error);
+                        return;
+                    }
+
+                    cb();
+                }
+            );
+        }
+    );
+}
+
+function addCalendarIntegrationAuditColumns(cb) {
+    db.query(
+        "ALTER TABLE channel_calendar_integrations ADD COLUMN connected_by VARCHAR(20) NULL",
+        error => {
+            if (error) {
+                LOGGER.error(`Failed to add connected_by column: ${error}`);
+                cb(error);
+                return;
+            }
+
+            db.query(
+                "ALTER TABLE channel_calendar_integrations ADD COLUMN updated_by VARCHAR(20) NULL",
+                error => {
+                    if (error) {
+                        LOGGER.error(`Failed to add updated_by column: ${error}`);
+                        cb(error);
+                        return;
+                    }
                     cb();
                 }
             );

@@ -239,6 +239,7 @@ html(lang="en")
               li: a(href="#cs-banlist", data-toggle="tab", tabindex="-1", onclick="javascript:socket.emit('requestBanlist')") Ban list
               li: a(href="#cs-bots", data-toggle="tab", tabindex="-1", onclick="javascript:if(window.CSTBots&&CSTBots.load){CSTBots.load()}") Bots
               li: a(href="#cs-shows", data-toggle="tab", tabindex="-1", onclick="javascript:if(window.CSTShows&&CSTShows.load){CSTShows.load()}") Shows
+              li: a(href="#cs-integrations", data-toggle="tab", tabindex="-1", onclick="javascript:if(window.CSTIntegrations&&CSTIntegrations.load){CSTIntegrations.load()}") Integrations
               li: a(href="#cs-chanlog", data-toggle="tab", onclick="javascript:socket.emit('readChanLog')") Log
           .modal-body
             .tab-content
@@ -255,6 +256,7 @@ html(lang="en")
               +emotes()
               +bots()
               +shows()
+              +integrations()
               +chanlog()
               +permeditor()
           .modal-footer

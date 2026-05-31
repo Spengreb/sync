@@ -334,5 +334,30 @@ mixin shows
           th Actions
       tbody#cs-shows-list
 
+mixin integrations
+  #cs-integrations.tab-pane
+    h4 Calendar Integrations
+    p Connect this channel's shows schedule to external calendars.
+    .alert.alert-info
+      | Google Calendar uses OAuth. Tokens are stored encrypted server-side and bound to this channel.
+    form.form-inline(action="javascript:void(0)", role="form")
+      .form-group
+        label(for="cs-int-google-calendar-id", style="margin-right:8px") Google Calendar ID
+        input#cs-int-google-calendar-id.form-control(type="text", placeholder="primary or calendar id", style="min-width:300px")
+      button#cs-int-google-connect.btn.btn-primary(type="button", style="margin-left:8px") Connect Google
+      button#cs-int-google-sync.btn.btn-default(type="button", style="margin-left:8px") Sync Now
+      button#cs-int-google-disconnect.btn.btn-danger(type="button", style="margin-left:8px") Disconnect
+    hr
+    table.table.table-striped.table-condensed
+      thead
+        tr
+          th Provider
+          th Status
+          th Calendar ID
+          th Last Sync
+          th Connected By
+          th Last Error
+      tbody#cs-int-list
+
 mixin permeditor
   #cs-permedit.tab-pane

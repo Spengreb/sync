@@ -109,6 +109,15 @@ var defaults = {
     "twitch-client-id": null,
     poll: {
         "max-options": 50
+    },
+    "calendar-sync": {
+        enabled: false,
+        "encryption-key": "",
+        google: {
+            "client-id": "",
+            "client-secret": "",
+            "redirect-uri": ""
+        }
     }
 };
 
