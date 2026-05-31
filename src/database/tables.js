@@ -189,6 +189,7 @@ export async function initTables() {
         t.specificType('playlist', 'mediumtext character set utf8mb4 not null');
         t.string('timezone', 64).notNullable().defaultTo('UTC');
         t.bigInteger('scheduled_for').notNullable();
+        t.bigInteger('estimated_end_at').nullable();
         t.bigInteger('next_run_at').notNullable();
         t.string('status', 20).notNullable().defaultTo('draft');
         t.string('recurrence', 20).notNullable().defaultTo('none');

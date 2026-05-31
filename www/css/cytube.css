@@ -242,6 +242,11 @@ li.ui-sortable-helper, li.ui-sortable-placeholder + li.queue_entry {
     padding: 2px !important;
 }
 
+.showschedule-block-cell {
+    border-top: 2px solid rgba(0, 0, 0, 0.35) !important;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.35) !important;
+}
+
 .showschedule-cell.showschedule-admin {
     cursor: pointer;
 }
@@ -256,6 +261,40 @@ li.ui-sortable-helper, li.ui-sortable-placeholder + li.queue_entry {
     color: #fff;
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
     text-decoration: none;
+}
+
+.showschedule-block-cell .showschedule-show {
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.showschedule-notes {
+    margin-top: 2px;
+    max-height: 72px;
+    overflow: hidden;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.showschedule-notes p,
+.showschedule-notes ul,
+.showschedule-notes ol {
+    margin: 0 0 4px 0;
+}
+
+.showschedule-notes img {
+    display: block;
+    max-width: 100%;
+    max-height: 42px;
+    width: auto;
+    height: auto;
+    border-radius: 2px;
+    margin: 2px 0;
+}
+
+.showschedule-notes a {
+    color: #fff;
+    text-decoration: underline;
 }
 
 .showschedule-show.status-scheduled { background: #337ab7; }

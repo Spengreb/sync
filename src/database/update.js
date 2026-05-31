@@ -3,7 +3,7 @@ import Promise from 'bluebird';
 
 const LOGGER = require('@calzoneman/jsli')('database/update');
 
-const DB_VERSION = 15;
+const DB_VERSION = 16;
 var hasUpdates = [];
 
 module.exports.checkVersion = function () {
@@ -59,6 +59,8 @@ function update(version, cb) {
         addCalendarIntegrationTables(cb);
     } else if (version < 15) {
         addCalendarIntegrationAuditColumns(cb);
+    } else if (version < 16) {
+        addShowsEstimatedEndColumn(cb);
     }
 }
 
@@ -255,6 +257,20 @@ function addCalendarIntegrationAuditColumns(cb) {
                     cb();
                 }
             );
+        }
+    );
+}
+
+function addShowsEstimatedEndColumn(cb) {
+    db.query(
+        "ALTER TABLE channel_shows ADD COLUMN estimated_end_at BIGINT NULL",
+        error => {
+            if (error) {
+                LOGGER.error(`Failed to add shows estimated_end_at column: ${error}`);
+                cb(error);
+                return;
+            }
+            cb();
         }
     );
 }

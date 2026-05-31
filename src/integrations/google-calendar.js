@@ -205,7 +205,8 @@ function unpackTokens(integrationRow) {
 
 async function upsertGoogleCalendarEvent(accessToken, calendarId, show) {
     const start = new Date(show.scheduled_for);
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const endMs = Number(show.estimated_end_at || 0);
+    const end = new Date(endMs > start.getTime() ? endMs : (start.getTime() + 60 * 60 * 1000));
     const body = {
         summary: show.name,
         description: show.notes || '',
@@ -230,7 +231,8 @@ async function upsertGoogleCalendarEvent(accessToken, calendarId, show) {
 
 async function updateGoogleCalendarEvent(accessToken, calendarId, eventId, show) {
     const start = new Date(show.scheduled_for);
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const endMs = Number(show.estimated_end_at || 0);
+    const end = new Date(endMs > start.getTime() ? endMs : (start.getTime() + 60 * 60 * 1000));
     const body = {
         summary: show.name,
         description: show.notes || '',

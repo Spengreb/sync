@@ -1436,6 +1436,7 @@ var CSTShows = (function () {
     var resolvingTitles = false;
     var weekOffset = 0;
     var cachedShows = [];
+    var notesEditorMode = 'edit';
 
     function apiBase() {
         return '/api/v1/channels/' + CHANNEL.name + '/shows';
@@ -1485,6 +1486,121 @@ var CSTShows = (function () {
             pad(d.getDate()) + 'T' +
             pad(d.getHours()) + ':' +
             pad(d.getMinutes());
+    }
+
+    function escapeHtml(text) {
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderMarkdownNotesPreview(markdown) {
+        var lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+        var blocks = [];
+        var paragraph = [];
+        var listItems = [];
+
+        function inline(text) {
+            var out = escapeHtml(text || '');
+            out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+            out = out.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, '<img src="$2" alt="$1">');
+            out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+            out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+            out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            out = out.replace(/_([^_]+)_/g, '<em>$1</em>');
+            return out;
+        }
+
+        function flushParagraph() {
+            if (!paragraph.length) return;
+            var rendered = inline(paragraph.join('\n')).replace(/\n/g, '<br>');
+            blocks.push('<p>' + rendered + '</p>');
+            paragraph = [];
+        }
+
+        function flushList() {
+            if (!listItems.length) return;
+            blocks.push('<ul>' + listItems.map(function (item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul>');
+            listItems = [];
+        }
+
+        lines.forEach(function (raw) {
+            var line = raw.trim();
+            if (!line) {
+                flushParagraph();
+                flushList();
+                return;
+            }
+            if (/^[-*]\s+/.test(line)) {
+                flushParagraph();
+                listItems.push(line.replace(/^[-*]\s+/, ''));
+                return;
+            }
+            if (/^#{1,3}\s+/.test(line)) {
+                flushParagraph();
+                flushList();
+                var level = line.match(/^#{1,3}/)[0].length;
+                blocks.push('<h' + level + '>' + inline(line.replace(/^#{1,3}\s+/, '')) + '</h' + level + '>');
+                return;
+            }
+            paragraph.push(raw);
+        });
+        flushParagraph();
+        flushList();
+        return blocks.join('');
+    }
+
+    function updateNotesPreview() {
+        var notes = $('#cs-shows-notes').val() || '';
+        if (!/\S/.test(notes)) {
+            $('#cs-shows-notes-rendered').html('<span class="text-muted">Nothing to preview.</span>');
+            return;
+        }
+        $('#cs-shows-notes-rendered').html(renderMarkdownNotesPreview(notes));
+    }
+
+    function setNotesEditorMode(mode) {
+        notesEditorMode = mode === 'preview' ? 'preview' : 'edit';
+        if (notesEditorMode === 'preview') {
+            $('#cs-shows-notes').hide();
+            $('#cs-shows-notes-rendered').show();
+            $('#cs-shows-notes-help').text('Preview mode');
+            $('#cs-shows-notes-toggle').text('Edit');
+            updateNotesPreview();
+            return;
+        }
+        $('#cs-shows-notes-rendered').hide();
+        $('#cs-shows-notes').show();
+        $('#cs-shows-notes-help').text('Supports Markdown: headings, lists, bold, italics, inline code, images, and links.');
+        $('#cs-shows-notes-toggle').text('Preview');
+    }
+
+    function getShowOccurrenceEndMs(show, startMs) {
+        if (!show || !show.estimated_end_at || !show.scheduled_for) {
+            return startMs + 60 * 60 * 1000;
+        }
+        var baseStart = Number(show.scheduled_for);
+        var baseEnd = Number(show.estimated_end_at);
+        var duration = baseEnd - baseStart;
+        if (!isFinite(duration) || duration <= 0) {
+            return startMs + 60 * 60 * 1000;
+        }
+        return startMs + duration;
+    }
+
+    function getShowBlockColor(show) {
+        if (show && show.color) {
+            return show.color;
+        }
+        var status = (show && show.status) || 'scheduled';
+        if (status === 'running') return '#5cb85c';
+        if (status === 'paused') return '#f0ad4e';
+        if (status === 'completed') return '#777777';
+        return '#337ab7';
     }
 
     function renderDraftPlaylist() {
@@ -1627,6 +1743,7 @@ var CSTShows = (function () {
 
     function readFormPayload() {
         var scheduledRaw = $('#cs-shows-scheduled-for').val();
+        var estimatedEndRaw = $('#cs-shows-estimated-end-at').val();
         var timezone = $('#cs-shows-timezone').val().trim();
         var notes = $('#cs-shows-notes').val();
         var colorHex = ($('#cs-shows-color-hex').val() || '').trim();
@@ -1644,6 +1761,7 @@ var CSTShows = (function () {
             notes: notes && notes.trim() ? notes : null,
             color: colorHex ? colorHex.toUpperCase() : null,
             scheduled_for: scheduledRaw ? new Date(scheduledRaw).toISOString() : null,
+            estimated_end_at: estimatedEndRaw ? new Date(estimatedEndRaw).toISOString() : null,
             timezone: timezone,
             recurrence: $('#cs-shows-recurrence').val(),
             fill_mode: $('#cs-shows-fill-mode').val(),
@@ -1662,6 +1780,7 @@ var CSTShows = (function () {
         $('#cs-shows-name').val('');
         $('#cs-shows-notes').val('');
         $('#cs-shows-scheduled-for').val('');
+        $('#cs-shows-estimated-end-at').val('');
         var detectedTz = 'UTC';
         if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
             detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -1679,6 +1798,8 @@ var CSTShows = (function () {
         $('#cs-shows-mediaurl').val('');
         draftPlaylist = [];
         renderDraftPlaylist();
+        updateNotesPreview();
+        setNotesEditorMode('edit');
     }
 
     function selectShow(show) {
@@ -1687,6 +1808,7 @@ var CSTShows = (function () {
         $('#cs-shows-name').val(show.name);
         $('#cs-shows-notes').val(show.notes || '');
         $('#cs-shows-scheduled-for').val(toLocalDateInput(show.scheduled_for));
+        $('#cs-shows-estimated-end-at').val(toLocalDateInput(show.estimated_end_at));
         var showTz = show.timezone || 'UTC';
         if ($('#cs-shows-timezone option[value="' + showTz + '"]').length === 0) {
             $('<option>').attr('value', showTz).text(showTz).appendTo('#cs-shows-timezone');
@@ -1707,6 +1829,8 @@ var CSTShows = (function () {
             };
         });
         renderDraftPlaylist();
+        updateNotesPreview();
+        setNotesEditorMode('edit');
         resolveDraftTitles();
     }
 
@@ -1751,26 +1875,106 @@ var CSTShows = (function () {
 
         function openShowDetailsModal(show, when) {
             $('#showdetails-title').text(show.name || 'Show Details');
-            $('#showdetails-time').text(when.toLocaleString());
+            var startAt = when ? new Date(when) : (show.scheduled_for ? new Date(show.scheduled_for) : new Date());
+            var endAt = new Date(getShowOccurrenceEndMs(show, startAt.getTime()));
+            $('#showdetails-time').text(startAt.toLocaleString());
+            $('#showdetails-estimated-end').text(endAt.toLocaleString());
             $('#showdetails-status').text(show.status || 'scheduled');
-            var notes = (show.notes || '').trim();
-            if (!notes) {
+            var linksWrap = $('#showdetails-calendar-links');
+            var linksContent = $('#showdetails-calendar-links-content').empty();
+            var googleLinks = show && show.calendar_links && show.calendar_links.google
+                ? show.calendar_links.google
+                : null;
+            if (googleLinks && (googleLinks.event_url || googleLinks.calendar_url)) {
+                if (googleLinks.event_url) {
+                    $('<a>')
+                        .attr('href', googleLinks.event_url)
+                        .attr('target', '_blank')
+                        .attr('rel', 'noopener noreferrer')
+                        .text('View in Google Calendar')
+                        .appendTo(linksContent);
+                }
+                if (googleLinks.calendar_url) {
+                    if (googleLinks.event_url) {
+                        linksContent.append(' | ');
+                    }
+                    $('<a>')
+                        .attr('href', googleLinks.calendar_url)
+                        .attr('target', '_blank')
+                        .attr('rel', 'noopener noreferrer')
+                        .text('Open Google Calendar')
+                        .appendTo(linksContent);
+                }
+                linksWrap.show();
+            } else {
+                linksWrap.hide();
+            }
+            var notesHtml = (show.notes_html || '').trim();
+            if (!notesHtml) {
                 $('#showdetails-notes').html('<p class="text-muted">No notes for this show.</p>');
             } else {
-                $('#showdetails-notes').html(notes);
+                $('#showdetails-notes').html(notesHtml);
             }
             $('#showdetails').modal();
         }
 
-        var byCell = {};
+        var blocksByStart = {};
+        var covered = {};
+        var firstSegmentPlaced = {};
+        function ensureDayMap(dayIdx) {
+            if (!covered[dayIdx]) covered[dayIdx] = {};
+        }
+        function markCovered(dayIdx, startHour, span) {
+            ensureDayMap(dayIdx);
+            for (var h = startHour + 1; h < startHour + span; h++) {
+                covered[dayIdx][h] = true;
+            }
+        }
+        function dayIndexFor(date) {
+            var midnight = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            var weekMidnight = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
+            return Math.floor((midnight.getTime() - weekMidnight.getTime()) / (24 * 60 * 60 * 1000));
+        }
         shows.forEach(function (show) {
             var at = show.next_run_at || show.scheduled_for;
             if (!at) return;
-            var d = new Date(at);
-            if (d < weekStart || d > new Date(weekEnd.getTime() + 86399999)) return;
-            var key = toCellKey(d);
-            if (!byCell[key]) byCell[key] = [];
-            byCell[key].push({ show: show, date: d });
+            var start = new Date(at);
+            var end = show.estimated_end_at ? new Date(show.estimated_end_at) : new Date(start.getTime() + 60 * 60 * 1000);
+            if (end <= start) end = new Date(start.getTime() + 60 * 60 * 1000);
+
+            var occurrenceEnd = new Date(getShowOccurrenceEndMs(show, start.getTime()));
+            var visibleStart = start < weekStart ? new Date(weekStart.getTime()) : start;
+            var visibleEnd = occurrenceEnd > new Date(weekEnd.getTime() + 86399999) ? new Date(weekEnd.getTime() + 86399999) : occurrenceEnd;
+            if (visibleEnd <= visibleStart) return;
+
+            var cursor = new Date(visibleStart.getTime());
+            while (cursor < visibleEnd) {
+                var dayStart = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate(), 0, 0, 0, 0);
+                var dayEnd = new Date(dayStart.getTime() + (24 * 60 * 60 * 1000));
+                var segEnd = visibleEnd < dayEnd ? visibleEnd : dayEnd;
+                var dayIdx = dayIndexFor(cursor);
+                if (dayIdx >= 0 && dayIdx < 7) {
+                    var slotStart = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate(), cursor.getHours(), 0, 0, 0);
+                    var startHour = slotStart.getHours();
+                    var span = Math.max(1, Math.ceil((segEnd.getTime() - slotStart.getTime()) / (60 * 60 * 1000)));
+                    if (startHour + span > 24) span = 24 - startHour;
+                    var startKey = dayIdx + '-' + startHour;
+                    if (!blocksByStart[startKey]) blocksByStart[startKey] = [];
+                    var isFirstVisibleSegment = !firstSegmentPlaced[show.id];
+                    blocksByStart[startKey].push({
+                        show: show,
+                        date: start,
+                        end: occurrenceEnd,
+                        span: span,
+                        isStart: isFirstVisibleSegment
+                    });
+                    if (isFirstVisibleSegment) firstSegmentPlaced[show.id] = true;
+                    if (span > 1) {
+                        markCovered(dayIdx, startHour, span);
+                    }
+                }
+                cursor = dayEnd;
+            }
         });
 
         var isAdmin = CLIENT.rank >= 2;
@@ -1791,7 +1995,9 @@ var CSTShows = (function () {
                 var cellDate = new Date(weekStart.getTime());
                 cellDate.setDate(weekStart.getDate() + col);
                 cellDate.setHours(hour, 0, 0, 0);
-                var key = toCellKey(cellDate);
+                if (covered[col] && covered[col][hour]) {
+                    continue;
+                }
                 var cell = $('<td class="showschedule-cell">').appendTo(tr);
                 if (isAdmin) {
                     cell.addClass('showschedule-admin').attr('title', 'Click to create show at this time');
@@ -1804,23 +2010,53 @@ var CSTShows = (function () {
                     })(new Date(cellDate.getTime()));
                 }
 
-                var items = byCell[key] || [];
+                var startKey = col + '-' + hour;
+                var items = blocksByStart[startKey] || [];
                 items.sort(function (a, b) { return a.date - b.date; });
+                if (items.length === 1 && items[0].span > 1) {
+                    cell.attr('rowspan', String(items[0].span));
+                    cell
+                        .addClass('showschedule-block-cell')
+                        .css('background-color', getShowBlockColor(items[0].show));
+                }
                 items.forEach(function (item) {
-                    var label = item.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + item.show.name;
+                    var startLabel = item.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    var endLabel = item.end
+                        ? item.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : null;
+                    var label = endLabel
+                        ? (startLabel + '-' + endLabel + ' ' + item.show.name)
+                        : (startLabel + ' ' + item.show.name);
+                    var notesPreview = (item.show.notes || '').trim().replace(/\s+/g, ' ');
+                    if (notesPreview.length > 120) {
+                        notesPreview = notesPreview.substring(0, 117) + '...';
+                    }
                     $('<a href="javascript:void(0)" class="showschedule-show">')
                         .addClass('status-' + (item.show.status || 'scheduled'))
                         .text(label)
-                        .css('background', item.show.color || '')
+                        .css('background', items.length === 1 ? 'transparent' : (item.show.color || ''))
+                        .css('opacity', item.isStart ? '1' : '0.85')
+                        .attr('title', notesPreview || label)
                         .on('click', function () {
                             if (isAdmin) {
                                 openShowsEditor();
                                 selectShow(item.show);
                             } else {
-                                openShowDetailsModal(item.show, item.date);
+                                openShowDetailsModal(item.show, item.date.getTime());
                             }
                         })
                         .appendTo(cell);
+                    if (item.isStart) {
+                        if (item.show.notes_html) {
+                            $('<div class="showschedule-notes small">')
+                                .html(item.show.notes_html)
+                                .appendTo(cell);
+                        } else if (notesPreview) {
+                            $('<div class="showschedule-notes small">')
+                                .text(notesPreview)
+                                .appendTo(cell);
+                        }
+                    }
                 });
             }
         }
@@ -1845,7 +2081,7 @@ var CSTShows = (function () {
     function render(shows) {
         var tbody = $('#cs-shows-list').empty();
         if (!shows.length) {
-            tbody.append('<tr><td colspan="6" class="text-muted">No shows configured</td></tr>');
+            tbody.append('<tr><td colspan="8" class="text-muted">No shows configured</td></tr>');
             return;
         }
 
@@ -1856,8 +2092,37 @@ var CSTShows = (function () {
             ));
             row.append($('<td>').text(show.status));
             row.append($('<td>').text(show.next_run_at ? new Date(show.next_run_at).toLocaleString(undefined, { timeZone: show.timezone || 'UTC' }) : 'N/A'));
+            row.append($('<td>').text(show.estimated_end_at ? new Date(show.estimated_end_at).toLocaleString(undefined, { timeZone: show.timezone || 'UTC' }) : 'N/A'));
             row.append($('<td>').text(show.timezone || 'UTC'));
             row.append($('<td>').text(show.recurrence || 'none'));
+            var calendarTd = $('<td>');
+            var googleLinks = show && show.calendar_links && show.calendar_links.google
+                ? show.calendar_links.google
+                : null;
+            if (googleLinks && (googleLinks.event_url || googleLinks.calendar_url)) {
+                if (googleLinks.event_url) {
+                    $('<a>')
+                        .attr('href', googleLinks.event_url)
+                        .attr('target', '_blank')
+                        .attr('rel', 'noopener noreferrer')
+                        .text('Event')
+                        .appendTo(calendarTd);
+                }
+                if (googleLinks.calendar_url) {
+                    if (googleLinks.event_url) {
+                        calendarTd.append(' | ');
+                    }
+                    $('<a>')
+                        .attr('href', googleLinks.calendar_url)
+                        .attr('target', '_blank')
+                        .attr('rel', 'noopener noreferrer')
+                        .text('Calendar')
+                        .appendTo(calendarTd);
+                }
+            } else {
+                calendarTd.append($('<span class="text-muted">').text('Not synced'));
+            }
+            row.append(calendarTd);
 
             var actions = $('<td>');
             $('<button class=\"btn btn-xs btn-primary\" style=\"margin-right:4px\">Run</button>')
@@ -1901,7 +2166,7 @@ var CSTShows = (function () {
             renderScheduleCalendar(cachedShows);
         }).fail(function () {
             if (CLIENT.rank >= 2) {
-                $('#cs-shows-list').html('<tr><td colspan=\"6\" class=\"text-danger\">Failed to load shows</td></tr>');
+                $('#cs-shows-list').html('<tr><td colspan=\"8\" class=\"text-danger\">Failed to load shows</td></tr>');
             }
             $('#showschedule-grid').html('<div class=\"text-danger\">Failed to load schedule</div>');
         });
@@ -1960,6 +2225,10 @@ var CSTShows = (function () {
             $('#cs-shows-color').val(v);
         }
     });
+    $('#cs-shows-notes').on('input', updateNotesPreview);
+    $('#cs-shows-notes-toggle').on('click', function () {
+        setNotesEditorMode(notesEditorMode === 'edit' ? 'preview' : 'edit');
+    });
     $('#cs-shows-playlist-list').sortable({
         update: function () {
             var nextDraft = [];
@@ -1989,6 +2258,7 @@ var CSTShows = (function () {
     });
     renderDraftPlaylist();
     clearForm();
+    setNotesEditorMode('edit');
     load();
 
     return { load: load, selectShow: selectShow, prefillScheduledDate: prefillScheduledDate };

@@ -1,10 +1,11 @@
 const express = require('express');
 const webserver = require('../../webserver');
 const showDB = require('../../../database/shows');
+const calendarDB = require('../../../database/calendar-integrations');
 const shows = require('../../../shows');
 const botDB = require('../../../database/bots');
 const infoGetter = require('../../../get-info');
-const XSS = require('../../../xss');
+const { renderNotesHtml } = require('../../../util/markdown');
 const { getChannelRow, getUserEffectiveRank, hashToken } = require('./middleware');
 
 const router = express.Router({ mergeParams: true });
@@ -21,6 +22,25 @@ const ACTION_MIN_RANK = {
     cancel: 3
 };
 const PUBLIC_SHOW_STATUSES = new Set(['scheduled', 'running', 'paused', 'completed']);
+
+async function attachGoogleCalendarLinks(channelId, showsList) {
+    const ids = (showsList || []).map(show => show.id);
+    const linksByShowId = await calendarDB.getGoogleLinksForShows(channelId, ids);
+    return (showsList || []).map(show => {
+        const withNotesHtml = Object.assign({}, show, {
+            notes_html: renderNotesHtml(show.notes)
+        });
+        const googleLinks = linksByShowId[show.id];
+        if (!googleLinks) {
+            return withNotesHtml;
+        }
+        return Object.assign({}, withNotesHtml, {
+            calendar_links: {
+                google: googleLinks
+            }
+        });
+    });
+}
 
 function sanitizePlaylist(list) {
     if (!Array.isArray(list)) return [];
@@ -69,6 +89,20 @@ function validateShowPayload(body, old = null) {
     if (!scheduledFor) {
         return { error: 'scheduled_for must be a valid date or timestamp' };
     }
+    const estimatedEndInput = body.estimated_end_at !== undefined
+        ? body.estimated_end_at
+        : (old ? old.estimated_end_at : null);
+    const estimatedEndAt = estimatedEndInput === null || estimatedEndInput === ''
+        ? null
+        : (typeof estimatedEndInput === 'number' ? estimatedEndInput : parseSchedule(estimatedEndInput));
+    if (estimatedEndAt !== null) {
+        if (!estimatedEndAt) {
+            return { error: 'estimated_end_at must be a valid date or timestamp' };
+        }
+        if (estimatedEndAt < scheduledFor) {
+            return { error: 'estimated_end_at must be later than scheduled_for' };
+        }
+    }
 
     const recurrence = String(body.recurrence || (old && old.recurrence) || 'none');
     if (!RECURRENCES.has(recurrence)) {
@@ -105,7 +139,7 @@ function validateShowPayload(body, old = null) {
     const notesRaw = body.notes !== undefined ? body.notes : (old ? old.notes : null);
     let notes = null;
     if (typeof notesRaw === 'string' && notesRaw.trim() !== '') {
-        notes = XSS.sanitizeHTML(notesRaw.substring(0, 20000));
+        notes = notesRaw.substring(0, 20000).trim();
     }
 
     const colorRaw = body.color !== undefined ? body.color : (old ? old.color : null);
@@ -126,6 +160,7 @@ function validateShowPayload(body, old = null) {
             playlist,
             timezone,
             scheduled_for: scheduledFor,
+            estimated_end_at: estimatedEndAt,
             next_run_at: nextRunAt,
             status,
             recurrence,
@@ -198,7 +233,8 @@ router.get('/', async (req, res) => {
     if (!auth) return;
 
     const showsList = await showDB.listShows(auth.channelRow.id);
-    res.json(showsList);
+    const withLinks = await attachGoogleCalendarLinks(auth.channelRow.id, showsList);
+    res.json(withLinks);
 });
 
 router.get('/public', async (req, res) => {
@@ -210,7 +246,9 @@ router.get('/public', async (req, res) => {
     }
 
     const showsList = await showDB.listShows(channelRow.id);
-    res.json(showsList.filter(show => PUBLIC_SHOW_STATUSES.has(show.status)));
+    const filtered = showsList.filter(show => PUBLIC_SHOW_STATUSES.has(show.status));
+    const withLinks = await attachGoogleCalendarLinks(channelRow.id, filtered);
+    res.json(withLinks);
 });
 
 router.get('/:id', async (req, res) => {
@@ -221,7 +259,9 @@ router.get('/:id', async (req, res) => {
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid show id' });
     const show = await showDB.getShowById(id, auth.channelRow.id);
     if (!show) return res.status(404).json({ error: 'Show not found' });
-    res.json(show);
+    res.json(Object.assign({}, show, {
+        notes_html: renderNotesHtml(show.notes)
+    }));
 });
 
 router.post('/resolve-media', async (req, res) => {
@@ -278,7 +318,9 @@ router.post('/', async (req, res) => {
     });
 
     const row = await showDB.getShowById(id, auth.channelRow.id);
-    res.status(201).json(row);
+    res.status(201).json(Object.assign({}, row, {
+        notes_html: renderNotesHtml(row.notes)
+    }));
 });
 
 router.put('/:id', async (req, res) => {
@@ -304,7 +346,9 @@ router.put('/:id', async (req, res) => {
     });
 
     const row = await showDB.getShowById(id, auth.channelRow.id);
-    res.json(row);
+    res.json(Object.assign({}, row, {
+        notes_html: renderNotesHtml(row.notes)
+    }));
 });
 
 router.delete('/:id', async (req, res) => {
@@ -394,7 +438,9 @@ router.post('/:id/action', async (req, res) => {
     }
 
     const row = await showDB.getShowById(id, auth.channelRow.id);
-    res.json(row);
+    res.json(Object.assign({}, row, {
+        notes_html: renderNotesHtml(row.notes)
+    }));
 });
 
 module.exports = router;

@@ -163,6 +163,64 @@ async function upsertExternalEvent({ channelId, showId, integrationId, provider,
         });
 }
 
+function buildGoogleCalendarUrl(calendarId) {
+    return `https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(calendarId)}`;
+}
+
+function buildGoogleEventUrl(eventId, calendarId) {
+    const raw = `${eventId} ${calendarId}`;
+    const eid = Buffer.from(raw, 'utf8')
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+    return `https://calendar.google.com/calendar/u/0/r/eventedit/${eid}`;
+}
+
+async function getGoogleLinksForShows(channelId, showIds) {
+    if (!Array.isArray(showIds) || showIds.length === 0) {
+        return {};
+    }
+
+    const integration = await getByChannelProvider(channelId, 'google');
+    if (!integration || integration.status !== 'connected' || !integration.last_sync_at) {
+        return {};
+    }
+
+    const calendarId = integration.config && integration.config.calendar_id
+        ? String(integration.config.calendar_id).trim()
+        : '';
+    if (!calendarId) {
+        return {};
+    }
+
+    const rows = await knex()('channel_show_external_events')
+        .where({
+            channel_id: channelId,
+            integration_id: integration.id,
+            provider: 'google'
+        })
+        .whereIn('show_id', showIds)
+        .select('show_id', 'external_event_id');
+
+    const calendarUrl = buildGoogleCalendarUrl(calendarId);
+    const links = {};
+    showIds.forEach(showId => {
+        links[showId] = { calendar_url: calendarUrl };
+    });
+
+    rows.forEach(row => {
+        if (!links[row.show_id]) {
+            links[row.show_id] = { calendar_url: calendarUrl };
+        }
+        if (row.external_event_id) {
+            links[row.show_id].event_url = buildGoogleEventUrl(row.external_event_id, calendarId);
+        }
+    });
+
+    return links;
+}
+
 module.exports = {
     listByChannel,
     getByChannelProvider,
@@ -170,5 +228,6 @@ module.exports = {
     disconnectIntegration,
     updateIntegrationSyncResult,
     getExternalEvent,
-    upsertExternalEvent
+    upsertExternalEvent,
+    getGoogleLinksForShows
 };
