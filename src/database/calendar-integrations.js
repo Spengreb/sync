@@ -114,6 +114,15 @@ async function updateIntegrationSyncResult(id, patch) {
         .update(update);
 }
 
+async function updateIntegrationConfig(id, config) {
+    await knex()('channel_calendar_integrations')
+        .where({ id })
+        .update({
+            config_json: JSON.stringify(config || {}),
+            updated_at: Date.now()
+        });
+}
+
 function parseExternalRow(row) {
     if (!row) return null;
     return {
@@ -123,7 +132,8 @@ function parseExternalRow(row) {
         integration_id: row.integration_id,
         provider: row.provider,
         external_event_id: row.external_event_id,
-        external_etag: row.external_etag || null
+        external_etag: row.external_etag || null,
+        last_pushed_at: row.last_pushed_at || null
     };
 }
 
@@ -133,6 +143,13 @@ async function getExternalEvent(showId, integrationId) {
         .limit(1)
         .select();
     return parseExternalRow(rows[0]);
+}
+
+async function listExternalEventsForIntegration(channelId, integrationId) {
+    const rows = await knex()('channel_show_external_events')
+        .where({ channel_id: channelId, integration_id: integrationId, provider: 'google' })
+        .select();
+    return rows.map(parseExternalRow);
 }
 
 async function upsertExternalEvent({ channelId, showId, integrationId, provider, externalEventId, externalEtag }) {
@@ -161,6 +178,83 @@ async function upsertExternalEvent({ channelId, showId, integrationId, provider,
             last_pushed_at: now,
             updated_at: now
         });
+}
+
+async function deleteExternalEvent(id, channelId, integrationId) {
+    await knex()('channel_show_external_events')
+        .where({ id, channel_id: channelId, integration_id: integrationId })
+        .delete();
+}
+
+function parseGoogleIndexRow(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        channel_id: row.channel_id,
+        integration_id: row.integration_id,
+        show_id: row.show_id || null,
+        external_event_id: row.external_event_id,
+        external_etag: row.external_etag || null,
+        start_at: row.start_at || null,
+        updated_remote_at: row.updated_remote_at || null,
+        last_seen_at: row.last_seen_at || null,
+        deleted_remote: !!row.deleted_remote,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+    };
+}
+
+async function listGoogleEventIndex(integrationId) {
+    const rows = await knex()('channel_google_event_index')
+        .where({ integration_id: integrationId })
+        .select();
+    return rows.map(parseGoogleIndexRow);
+}
+
+async function upsertGoogleEventIndexRow(row) {
+    const now = Date.now();
+    const existing = await knex()('channel_google_event_index')
+        .where({
+            integration_id: row.integration_id,
+            external_event_id: row.external_event_id
+        })
+        .limit(1)
+        .select();
+
+    if (!existing || existing.length === 0) {
+        await knex()('channel_google_event_index').insert({
+            channel_id: row.channel_id,
+            integration_id: row.integration_id,
+            show_id: row.show_id || null,
+            external_event_id: row.external_event_id,
+            external_etag: row.external_etag || null,
+            start_at: row.start_at || null,
+            updated_remote_at: row.updated_remote_at || null,
+            last_seen_at: row.last_seen_at || now,
+            deleted_remote: row.deleted_remote ? 1 : 0,
+            created_at: now,
+            updated_at: now
+        });
+        return;
+    }
+
+    await knex()('channel_google_event_index')
+        .where({ id: existing[0].id })
+        .update({
+            show_id: row.show_id || null,
+            external_etag: row.external_etag || null,
+            start_at: row.start_at || null,
+            updated_remote_at: row.updated_remote_at || null,
+            last_seen_at: row.last_seen_at || now,
+            deleted_remote: row.deleted_remote ? 1 : 0,
+            updated_at: now
+        });
+}
+
+async function deleteGoogleEventIndexRow(id, integrationId) {
+    await knex()('channel_google_event_index')
+        .where({ id, integration_id: integrationId })
+        .delete();
 }
 
 function buildGoogleCalendarUrl(calendarId) {
@@ -227,7 +321,13 @@ module.exports = {
     upsertGoogleIntegration,
     disconnectIntegration,
     updateIntegrationSyncResult,
+    updateIntegrationConfig,
     getExternalEvent,
+    listExternalEventsForIntegration,
     upsertExternalEvent,
+    deleteExternalEvent,
+    listGoogleEventIndex,
+    upsertGoogleEventIndexRow,
+    deleteGoogleEventIndexRow,
     getGoogleLinksForShows
 };

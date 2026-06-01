@@ -270,4 +270,30 @@ export async function initTables() {
         t.unique(['show_id', 'integration_id'], 'channel_show_external_event_unique');
         t.index(['integration_id', 'provider'], 'channel_show_external_event_integration_idx');
     });
+
+    await ensureTable('channel_google_event_index', t => {
+        t.charset('utf8');
+        t.increments('id').notNullable().primary();
+        t.integer('channel_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channels')
+            .onDelete('cascade');
+        t.integer('integration_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channel_calendar_integrations')
+            .onDelete('cascade');
+        t.integer('show_id').unsigned().nullable();
+        t.string('external_event_id', 255).notNullable();
+        t.string('external_etag', 255).nullable();
+        t.bigInteger('start_at').nullable();
+        t.bigInteger('updated_remote_at').nullable();
+        t.bigInteger('last_seen_at').nullable();
+        t.boolean('deleted_remote').notNullable().defaultTo(false);
+        t.bigInteger('created_at').notNullable();
+        t.bigInteger('updated_at').notNullable();
+        t.unique(['integration_id', 'external_event_id'], 'channel_google_event_index_event_unique');
+        t.index(['integration_id', 'show_id'], 'channel_google_event_index_show_idx');
+    });
 }

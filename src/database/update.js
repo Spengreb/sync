@@ -3,7 +3,7 @@ import Promise from 'bluebird';
 
 const LOGGER = require('@calzoneman/jsli')('database/update');
 
-const DB_VERSION = 16;
+const DB_VERSION = 17;
 var hasUpdates = [];
 
 module.exports.checkVersion = function () {
@@ -61,6 +61,8 @@ function update(version, cb) {
         addCalendarIntegrationAuditColumns(cb);
     } else if (version < 16) {
         addShowsEstimatedEndColumn(cb);
+    } else if (version < 17) {
+        addGoogleEventIndexTable(cb);
     }
 }
 
@@ -267,6 +269,37 @@ function addShowsEstimatedEndColumn(cb) {
         error => {
             if (error) {
                 LOGGER.error(`Failed to add shows estimated_end_at column: ${error}`);
+                cb(error);
+                return;
+            }
+            cb();
+        }
+    );
+}
+
+function addGoogleEventIndexTable(cb) {
+    db.query(
+        "CREATE TABLE IF NOT EXISTS channel_google_event_index (" +
+        "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+        "channel_id INT UNSIGNED NOT NULL," +
+        "integration_id INT UNSIGNED NOT NULL," +
+        "show_id INT UNSIGNED NULL," +
+        "external_event_id VARCHAR(255) NOT NULL," +
+        "external_etag VARCHAR(255) NULL," +
+        "start_at BIGINT NULL," +
+        "updated_remote_at BIGINT NULL," +
+        "last_seen_at BIGINT NULL," +
+        "deleted_remote TINYINT(1) NOT NULL DEFAULT 0," +
+        "created_at BIGINT NOT NULL," +
+        "updated_at BIGINT NOT NULL," +
+        "UNIQUE KEY channel_google_event_index_event_unique (integration_id, external_event_id)," +
+        "KEY channel_google_event_index_show_idx (integration_id, show_id)," +
+        "CONSTRAINT fk_google_event_index_channel FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE," +
+        "CONSTRAINT fk_google_event_index_integration FOREIGN KEY (integration_id) REFERENCES channel_calendar_integrations(id) ON DELETE CASCADE" +
+        ") CHARACTER SET utf8",
+        error => {
+            if (error) {
+                LOGGER.error(`Failed to create channel_google_event_index table: ${error}`);
                 cb(error);
                 return;
             }

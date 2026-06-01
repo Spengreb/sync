@@ -2317,6 +2317,9 @@ var CSTShows = (function () {
 })();
 
 var CSTIntegrations = (function () {
+    var syncInFlight = false;
+    var syncCooldownTimer = null;
+
     function csrfField() {
         return (typeof CSRF_TOKEN === 'string' && CSRF_TOKEN.length > 0) ? CSRF_TOKEN : '';
     }
@@ -2337,10 +2340,49 @@ var CSTIntegrations = (function () {
         }
     }
 
+    function setSyncStatus(text, tone) {
+        var el = $('#cs-int-google-sync-status');
+        if (!el.length) return;
+        el
+            .removeClass('label-default label-info label-success label-danger label-warning')
+            .addClass('label-' + (tone || 'default'))
+            .text(text || 'Idle');
+    }
+
+    function startSyncCooldown(ms) {
+        var remaining = Math.max(0, parseInt(ms, 10) || 0);
+        if (syncCooldownTimer) {
+            clearInterval(syncCooldownTimer);
+            syncCooldownTimer = null;
+        }
+        if (remaining <= 0) {
+            $('#cs-int-google-sync').prop('disabled', false);
+            return;
+        }
+
+        $('#cs-int-google-sync').prop('disabled', true);
+        setSyncStatus('Cooldown ' + Math.ceil(remaining / 1000) + 's', 'warning');
+        syncCooldownTimer = setInterval(function () {
+            remaining -= 1000;
+            if (remaining <= 0) {
+                clearInterval(syncCooldownTimer);
+                syncCooldownTimer = null;
+                if (!syncInFlight) {
+                    $('#cs-int-google-sync').prop('disabled', false);
+                    setSyncStatus('Connected', 'success');
+                }
+                return;
+            }
+            setSyncStatus('Cooldown ' + Math.ceil(remaining / 1000) + 's', 'warning');
+        }, 1000);
+    }
+
     function render(rows) {
         var tbody = $('#cs-int-list').empty();
+        var googleRow = null;
         if (!Array.isArray(rows) || rows.length === 0) {
             tbody.append('<tr><td colspan="6" class="text-muted">No integrations connected</td></tr>');
+            setSyncStatus('Not connected', 'default');
             return;
         }
 
@@ -2356,9 +2398,20 @@ var CSTIntegrations = (function () {
             tbody.append(tr);
 
             if (row.provider === 'google') {
+                googleRow = row;
                 $('#cs-int-google-calendar-id').val(calendarId || '');
             }
         });
+
+        if (!googleRow) {
+            setSyncStatus('Not connected', 'default');
+        } else if (googleRow.status === 'error' && googleRow.last_error) {
+            setSyncStatus('Error: ' + googleRow.last_error, 'danger');
+        } else if (googleRow.status === 'connected') {
+            setSyncStatus('Connected', 'success');
+        } else {
+            setSyncStatus(String(googleRow.status || 'Idle'), 'default');
+        }
     }
 
     function load() {
@@ -2396,18 +2449,43 @@ var CSTIntegrations = (function () {
     }
 
     function syncGoogleNow() {
+        if (syncInFlight) {
+            setSyncStatus('Already syncing...', 'warning');
+            return;
+        }
+
+        syncInFlight = true;
+        $('#cs-int-google-sync').prop('disabled', true);
+        setSyncStatus('Queued...', 'info');
+
         $.ajax({
             url: apiBase() + '/google/sync-now',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ _csrf: csrfField() })
         }).done(function (data) {
+            setSyncStatus('Syncing...', 'info');
             load();
             if (data && typeof data.synced === 'number') {
-                alert('Synced ' + data.synced + ' shows to Google Calendar');
+                setSyncStatus('Synced ' + data.synced + ' shows', 'success');
+            } else {
+                setSyncStatus('Sync completed', 'success');
             }
         }).fail(function (xhr) {
-            alert('Sync failed: ' + formatError(xhr, 'Sync failed'));
+            if (xhr && xhr.status === 409) {
+                setSyncStatus('Already syncing on server', 'warning');
+                return;
+            }
+            if (xhr && xhr.status === 429 && xhr.responseJSON && xhr.responseJSON.retry_after_ms) {
+                startSyncCooldown(xhr.responseJSON.retry_after_ms);
+                return;
+            }
+            setSyncStatus('Sync failed: ' + formatError(xhr, 'Sync failed'), 'danger');
+        }).always(function () {
+            syncInFlight = false;
+            if (!syncCooldownTimer) {
+                $('#cs-int-google-sync').prop('disabled', false);
+            }
         });
     }
 
@@ -2428,6 +2506,7 @@ var CSTIntegrations = (function () {
     $('#cs-int-google-connect').on('click', connectGoogle);
     $('#cs-int-google-sync').on('click', syncGoogleNow);
     $('#cs-int-google-disconnect').on('click', disconnectGoogle);
+    setSyncStatus('Idle', 'default');
 
     return { load: load };
 })();

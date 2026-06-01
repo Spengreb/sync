@@ -111,7 +111,13 @@ function requestJson(method, baseUrl, path, body, headers = {}) {
                     if (message && typeof message === 'object') {
                         message = message.message || message.status || JSON.stringify(message);
                     }
-                    return reject(new Error(String(message)));
+                    const err = new Error(String(message));
+                    err.statusCode = res.statusCode;
+                    const retryAfter = parseInt(res.headers['retry-after'], 10);
+                    if (!isNaN(retryAfter) && retryAfter > 0) {
+                        err.retryAfterMs = retryAfter * 1000;
+                    }
+                    return reject(err);
                 }
                 resolve(parsed);
             });
@@ -149,7 +155,13 @@ function requestForm(baseUrl, path, formBody) {
                     if (message && typeof message === 'object') {
                         message = message.message || message.status || JSON.stringify(message);
                     }
-                    return reject(new Error(String(message)));
+                    const err = new Error(String(message));
+                    err.statusCode = res.statusCode;
+                    const retryAfter = parseInt(res.headers['retry-after'], 10);
+                    if (!isNaN(retryAfter) && retryAfter > 0) {
+                        err.retryAfterMs = retryAfter * 1000;
+                    }
+                    return reject(err);
                 }
                 resolve(parsed);
             });
@@ -218,6 +230,13 @@ async function upsertGoogleCalendarEvent(accessToken, calendarId, show) {
             dateTime: end.toISOString(),
             timeZone: show.timezone || 'UTC'
         },
+        extendedProperties: {
+            private: {
+                source: 'veretube-sync',
+                show_id: String(show.id),
+                channel_id: String(show.channel_id || '')
+            }
+        },
         colorId: null
     };
     return requestJson(
@@ -243,6 +262,13 @@ async function updateGoogleCalendarEvent(accessToken, calendarId, eventId, show)
         end: {
             dateTime: end.toISOString(),
             timeZone: show.timezone || 'UTC'
+        },
+        extendedProperties: {
+            private: {
+                source: 'veretube-sync',
+                show_id: String(show.id),
+                channel_id: String(show.channel_id || '')
+            }
         }
     };
     return requestJson(
@@ -250,6 +276,38 @@ async function updateGoogleCalendarEvent(accessToken, calendarId, eventId, show)
         'https://www.googleapis.com',
         `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
         body,
+        { Authorization: `Bearer ${accessToken}` }
+    );
+}
+
+async function deleteGoogleCalendarEvent(accessToken, calendarId, eventId) {
+    return requestJson(
+        'DELETE',
+        'https://www.googleapis.com',
+        `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+        null,
+        { Authorization: `Bearer ${accessToken}` }
+    );
+}
+
+async function listGoogleCalendarEvents(accessToken, calendarId, opts = {}) {
+    const q = {
+        singleEvents: 'true',
+        showDeleted: 'true',
+        maxResults: String(opts.maxResults || 2500)
+    };
+    if (opts.pageToken) {
+        q.pageToken = opts.pageToken;
+    }
+    if (opts.syncToken) {
+        q.syncToken = opts.syncToken;
+    }
+    const qs = querystring.stringify(q);
+    return requestJson(
+        'GET',
+        'https://www.googleapis.com',
+        `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${qs}`,
+        null,
         { Authorization: `Bearer ${accessToken}` }
     );
 }
@@ -265,5 +323,7 @@ module.exports = {
     packTokens,
     unpackTokens,
     upsertGoogleCalendarEvent,
-    updateGoogleCalendarEvent
+    updateGoogleCalendarEvent,
+    deleteGoogleCalendarEvent,
+    listGoogleCalendarEvents
 };
