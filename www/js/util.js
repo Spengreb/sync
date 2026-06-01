@@ -985,6 +985,8 @@ function handleModPermissions() {
     }
     $("#cs-show_public").prop("checked", CHANNEL.opts.show_public);
     $("#cs-show_public").attr("disabled", CLIENT.rank < 3);
+    $("#cs-show_schedule").prop("checked", CHANNEL.opts.show_schedule !== false);
+    $("#cs-show_schedule").attr("disabled", CLIENT.rank < 3);
     $("#cs-password").val(CHANNEL.opts.password || "");
     $("#cs-password").attr("disabled", CLIENT.rank < 3);
     $("#cs-enable_link_regex").prop("checked", CHANNEL.opts.enable_link_regex);
@@ -1026,6 +1028,9 @@ function handlePermissionChange() {
 
     $("#qlockbtn").attr("disabled", !hasPermission("playlistlock"));
     setVisible("#showchansettings", CLIENT.rank >= 2);
+    if (typeof window.applyScheduleVisibility === "function") {
+        window.applyScheduleVisibility();
+    }
     setVisible("#playlistmanagerwrap", CLIENT.rank >= 1);
     setVisible("#modflair", CLIENT.rank >= 2);
     setVisible("#guestlogin", CLIENT.rank < 0);

@@ -24,6 +24,7 @@ function OptionsModule(_channel) {
             cooldown: 4            // Number of seconds with no messages before burst is reset
         },
         show_public: false,        // List the channel on the index page
+        show_schedule: true,       // Show the schedule UI and nav toggle
         enable_link_regex: true,   // Use the built-in link filter
         password: false,           // Channel password (false -> no password required for entry)
         allow_dupes: false,        // Allow duplicate videos on the playlist
@@ -319,6 +320,11 @@ OptionsModule.prototype.handleSetOptions = function (user, data) {
 
     if ("show_public" in data && user.account.effectiveRank >= 3) {
         this.opts.show_public = Boolean(data.show_public);
+        sendUpdate = true;
+    }
+
+    if ("show_schedule" in data && user.account.effectiveRank >= 3) {
+        this.opts.show_schedule = Boolean(data.show_schedule);
         sendUpdate = true;
     }
 

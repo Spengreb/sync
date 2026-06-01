@@ -270,7 +270,6 @@ li.ui-sortable-helper, li.ui-sortable-placeholder + li.queue_entry {
 
 .showschedule-notes {
     margin-top: 2px;
-    max-height: 72px;
     overflow: hidden;
     line-height: 1.2;
     color: rgba(255, 255, 255, 0.95);

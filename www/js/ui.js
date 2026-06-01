@@ -34,6 +34,20 @@ function updateScheduleToggleLabel() {
     $("#toggleschedule").text(row.is(":visible") ? "Hide Schedule" : "Show Schedule");
 }
 
+function applyScheduleVisibility() {
+    var enabled = true;
+    if (window.CHANNEL && CHANNEL.opts && CHANNEL.opts.show_schedule === false) {
+        enabled = false;
+    }
+
+    if (!enabled) {
+        $("#showschedule-row").hide();
+    }
+
+    $("#toggleschedule").css("display", enabled ? "" : "none");
+    updateScheduleToggleLabel();
+}
+
 $("#toggleschedule").on('click', function () {
     var row = $("#showschedule-row");
     if (!row.length) return;
@@ -44,7 +58,8 @@ $("#toggleschedule").on('click', function () {
     }
     updateScheduleToggleLabel();
 });
-updateScheduleToggleLabel();
+window.applyScheduleVisibility = applyScheduleVisibility;
+applyScheduleVisibility();
 
 /* chatbox */
 
@@ -1437,6 +1452,8 @@ var CSTShows = (function () {
     var weekOffset = 0;
     var cachedShows = [];
     var notesEditorMode = 'edit';
+    var REFRESH_MS = 15000;
+    var scheduleRefreshTimer = null;
 
     function apiBase() {
         return '/api/v1/channels/' + CHANNEL.name + '/shows';
@@ -1919,17 +1936,7 @@ var CSTShows = (function () {
         }
 
         var blocksByStart = {};
-        var covered = {};
         var firstSegmentPlaced = {};
-        function ensureDayMap(dayIdx) {
-            if (!covered[dayIdx]) covered[dayIdx] = {};
-        }
-        function markCovered(dayIdx, startHour, span) {
-            ensureDayMap(dayIdx);
-            for (var h = startHour + 1; h < startHour + span; h++) {
-                covered[dayIdx][h] = true;
-            }
-        }
         function dayIndexFor(date) {
             var midnight = new Date(date.getFullYear(), date.getMonth(), date.getDate());
             var weekMidnight = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
@@ -1969,15 +1976,13 @@ var CSTShows = (function () {
                         isStart: isFirstVisibleSegment
                     });
                     if (isFirstVisibleSegment) firstSegmentPlaced[show.id] = true;
-                    if (span > 1) {
-                        markCovered(dayIdx, startHour, span);
-                    }
                 }
                 cursor = dayEnd;
             }
         });
 
         var isAdmin = CLIENT.rank >= 2;
+        var rowspanRemaining = [0, 0, 0, 0, 0, 0, 0];
         var table = $('<table class="table table-bordered table-condensed">');
         var thead = $('<thead><tr><th class="showschedule-time-col">Time</th></tr></thead>').appendTo(table);
         var hrow = thead.find('tr');
@@ -1995,7 +2000,8 @@ var CSTShows = (function () {
                 var cellDate = new Date(weekStart.getTime());
                 cellDate.setDate(weekStart.getDate() + col);
                 cellDate.setHours(hour, 0, 0, 0);
-                if (covered[col] && covered[col][hour]) {
+                if (rowspanRemaining[col] > 0) {
+                    rowspanRemaining[col] -= 1;
                     continue;
                 }
                 var cell = $('<td class="showschedule-cell">').appendTo(tr);
@@ -2015,6 +2021,7 @@ var CSTShows = (function () {
                 items.sort(function (a, b) { return a.date - b.date; });
                 if (items.length === 1 && items[0].span > 1) {
                     cell.attr('rowspan', String(items[0].span));
+                    rowspanRemaining[col] = items[0].span - 1;
                     cell
                         .addClass('showschedule-block-cell')
                         .css('background-color', getShowBlockColor(items[0].show));
@@ -2034,7 +2041,7 @@ var CSTShows = (function () {
                     $('<a href="javascript:void(0)" class="showschedule-show">')
                         .addClass('status-' + (item.show.status || 'scheduled'))
                         .text(label)
-                        .css('background', items.length === 1 ? 'transparent' : (item.show.color || ''))
+                        .css('background-color', item.show.color || getShowBlockColor(item.show))
                         .css('opacity', item.isStart ? '1' : '0.85')
                         .attr('title', notesPreview || label)
                         .on('click', function () {
@@ -2047,14 +2054,33 @@ var CSTShows = (function () {
                         })
                         .appendTo(cell);
                     if (item.isStart) {
+                        var notesEl = null;
                         if (item.show.notes_html) {
-                            $('<div class="showschedule-notes small">')
+                            notesEl = $('<div class="showschedule-notes small">')
                                 .html(item.show.notes_html)
                                 .appendTo(cell);
                         } else if (notesPreview) {
-                            $('<div class="showschedule-notes small">')
+                            notesEl = $('<div class="showschedule-notes small">')
                                 .text(notesPreview)
                                 .appendTo(cell);
+                        }
+
+                        if (notesEl && items.length > 1) {
+                            notesEl
+                                .css('background-color', item.show.color || getShowBlockColor(item.show))
+                                .css('color', '#ffffff')
+                                .css('border-radius', '3px')
+                                .css('padding', '4px 6px')
+                                .css('margin-top', '0')
+                                .css('margin-bottom', '2px');
+                        }
+
+                        if (items.length > 1) {
+                            cell.find('.showschedule-show:last').css({
+                                'margin-bottom': '0',
+                                'border-bottom-left-radius': '0',
+                                'border-bottom-right-radius': '0'
+                            });
                         }
                     }
                 });
@@ -2172,6 +2198,31 @@ var CSTShows = (function () {
         });
     }
 
+    function shouldAutoRefreshSchedule() {
+        if (document.hidden) return false;
+        if (window.CHANNEL && CHANNEL.opts && CHANNEL.opts.show_schedule === false) return false;
+        var row = $('#showschedule-row');
+        return row.length > 0 && row.is(':visible');
+    }
+
+    function setupScheduleAutoRefresh() {
+        if (scheduleRefreshTimer) {
+            clearInterval(scheduleRefreshTimer);
+        }
+
+        scheduleRefreshTimer = setInterval(function () {
+            if (shouldAutoRefreshSchedule()) {
+                load();
+            }
+        }, REFRESH_MS);
+
+        document.addEventListener('visibilitychange', function () {
+            if (shouldAutoRefreshSchedule()) {
+                load();
+            }
+        });
+    }
+
     $('#cs-shows-create').on('click', function () {
         var payload = readFormPayload();
 
@@ -2259,6 +2310,7 @@ var CSTShows = (function () {
     renderDraftPlaylist();
     clearForm();
     setNotesEditorMode('edit');
+    setupScheduleAutoRefresh();
     load();
 
     return { load: load, selectShow: selectShow, prefillScheduledDate: prefillScheduledDate };
