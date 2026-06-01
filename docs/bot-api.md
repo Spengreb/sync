@@ -374,6 +374,34 @@ List shows for the channel. Minimum rank: **2 (Mod)**.
 
 Get a single show. Minimum rank: **2 (Mod)**.
 
+#### `GET /channels/:channel/shows/public`
+
+List only public-facing shows (`scheduled`, `running`, `paused`, `completed`). No auth required.
+
+#### `POST /channels/:channel/shows/resolve-media`
+
+Resolve up to 50 media entries to display-ready titles before saving a show. Minimum rank: **2 (Mod)**.
+
+**Body:**
+
+```json
+{
+  "items": [
+    { "type": "yt", "id": "dQw4w9WgXcQ" }
+  ]
+}
+```
+
+**Response:**
+
+```json
+{
+  "items": [
+    { "type": "yt", "id": "dQw4w9WgXcQ", "title": "Rick Astley - Never Gonna Give You Up", "ok": true }
+  ]
+}
+```
+
 #### `POST /channels/:channel/shows`
 
 Create a show. Minimum rank: **2 (Mod)**.
@@ -403,7 +431,10 @@ Run control action.
 ```json
 {
   "name": "Friday Prime",
+  "notes": "Opening block",
+  "color": "#337AB7",
   "scheduled_for": "2026-05-22T19:00:00.000Z",
+  "estimated_end_at": "2026-05-22T21:00:00.000Z",
   "timezone": "America/New_York",
   "recurrence": "weekly",
   "fill_mode": "replace",
@@ -418,17 +449,54 @@ Run control action.
 
 **Field constraints:**
 
+- `name`: required, 1-100 chars
+- `notes`: optional string, trimmed and capped to 20,000 chars
+- `color`: optional `#RRGGBB` hex color
 - `timezone`: required IANA timezone string (example: `Europe/Berlin`, `America/New_York`)
+- `scheduled_for`: required date string or unix timestamp (ms)
+- `estimated_end_at`: optional date string/timestamp, must be later than `scheduled_for` when present
 - `recurrence`: `none | daily | weekly`
 - `fill_mode`: `append | replace`
 - `conflict_mode`: `force | skip`
 - `playlist`: non-empty array of media entries (`type`, `id`, optional `pos: next|end`)
-- `status`: one of `draft | scheduled | paused | completed | failed | canceled` (`running` is internal)
+- `status`: one of `draft | scheduled | paused | running | completed | failed | canceled` (`running` is accepted but normalized to `scheduled` on write)
 
 **Action body schema:**
 
 ```json
 { "action": "run" }
+```
+
+**Show response shape** (`GET`, `POST`, `PUT`, and `POST /action`):
+
+```json
+{
+  "id": 42,
+  "channel_name": "my-channel",
+  "channel_id": 10,
+  "name": "Friday Prime",
+  "notes": "Opening block",
+  "notes_html": "<p>Opening block</p>",
+  "color": "#337AB7",
+  "playlist": [{ "type": "yt", "id": "dQw4w9WgXcQ", "pos": "end" }],
+  "timezone": "America/New_York",
+  "scheduled_for": 1779476400000,
+  "estimated_end_at": 1779483600000,
+  "next_run_at": 1779476400000,
+  "status": "scheduled",
+  "recurrence": "weekly",
+  "recurrence_meta": null,
+  "fill_mode": "replace",
+  "conflict_mode": "force",
+  "start_playback": true,
+  "run_count": 0,
+  "last_run_at": null,
+  "created_at": 1779400000000,
+  "updated_at": 1779400000000,
+  "created_by": "my-bot",
+  "updated_by": "my-bot",
+  "last_error": null
+}
 ```
 
 ---
