@@ -1817,6 +1817,7 @@ var CSTShows = (function () {
         renderDraftPlaylist();
         updateNotesPreview();
         setNotesEditorMode('edit');
+        updateSelectedShowActions();
     }
 
     function selectShow(show) {
@@ -1849,6 +1850,7 @@ var CSTShows = (function () {
         updateNotesPreview();
         setNotesEditorMode('edit');
         resolveDraftTitles();
+        updateSelectedShowActions();
     }
 
     function openShowsEditor() {
@@ -2104,96 +2106,21 @@ var CSTShows = (function () {
         });
     }
 
-    function render(shows) {
-        var tbody = $('#cs-shows-list').empty();
-        if (!shows.length) {
-            tbody.append('<tr><td colspan="8" class="text-muted">No shows configured</td></tr>');
-            return;
-        }
-
-        shows.forEach(function (show) {
-            var row = $('<tr>');
-            row.append($('<td>').append(
-                $('<a href=\"javascript:void(0)\">').text(show.name).on('click', function () { selectShow(show); })
-            ));
-            row.append($('<td>').text(show.status));
-            row.append($('<td>').text(show.next_run_at ? new Date(show.next_run_at).toLocaleString(undefined, { timeZone: show.timezone || 'UTC' }) : 'N/A'));
-            row.append($('<td>').text(show.estimated_end_at ? new Date(show.estimated_end_at).toLocaleString(undefined, { timeZone: show.timezone || 'UTC' }) : 'N/A'));
-            row.append($('<td>').text(show.timezone || 'UTC'));
-            row.append($('<td>').text(show.recurrence || 'none'));
-            var calendarTd = $('<td>');
-            var googleLinks = show && show.calendar_links && show.calendar_links.google
-                ? show.calendar_links.google
-                : null;
-            if (googleLinks && (googleLinks.event_url || googleLinks.calendar_url)) {
-                if (googleLinks.event_url) {
-                    $('<a>')
-                        .attr('href', googleLinks.event_url)
-                        .attr('target', '_blank')
-                        .attr('rel', 'noopener noreferrer')
-                        .text('Event')
-                        .appendTo(calendarTd);
-                }
-                if (googleLinks.calendar_url) {
-                    if (googleLinks.event_url) {
-                        calendarTd.append(' | ');
-                    }
-                    $('<a>')
-                        .attr('href', googleLinks.calendar_url)
-                        .attr('target', '_blank')
-                        .attr('rel', 'noopener noreferrer')
-                        .text('Calendar')
-                        .appendTo(calendarTd);
-                }
-            } else {
-                calendarTd.append($('<span class="text-muted">').text('Not synced'));
-            }
-            row.append(calendarTd);
-
-            var actions = $('<td>');
-            $('<button class=\"btn btn-xs btn-primary\" style=\"margin-right:4px\">Run</button>')
-                .on('click', function () { action(show.id, 'run'); })
-                .appendTo(actions);
-            $('<button class=\"btn btn-xs btn-default\" style=\"margin-right:4px\">Pause</button>')
-                .on('click', function () { action(show.id, 'pause'); })
-                .appendTo(actions);
-            $('<button class=\"btn btn-xs btn-success\" style=\"margin-right:4px\">Resume</button>')
-                .on('click', function () { action(show.id, 'resume'); })
-                .appendTo(actions);
-            $('<button class=\"btn btn-xs btn-warning\" style=\"margin-right:4px\">Cancel</button>')
-                .on('click', function () { action(show.id, 'cancel'); })
-                .appendTo(actions);
-            $('<button class=\"btn btn-xs btn-danger\">Delete</button>')
-                .on('click', function () {
-                    if (!confirm('Delete this show?')) return;
-                    $.ajax({
-                        url: apiBase() + '/' + show.id,
-                        method: 'DELETE',
-                        data: { _csrf: csrfField() }
-                    })
-                        .done(load)
-                        .fail(function (xhr) {
-                            alert('Delete failed: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.statusText));
-                        });
-                })
-                .appendTo(actions);
-            row.append(actions);
-            tbody.append(row);
-        });
+    function updateSelectedShowActions() {
+        var visible = !!selectedId;
+        $('#cs-shows-run').toggle(visible).prop('disabled', !visible);
+        $('#cs-shows-pause').toggle(visible).prop('disabled', !visible);
+        $('#cs-shows-resume').toggle(visible).prop('disabled', !visible);
+        $('#cs-shows-cancel').toggle(visible).prop('disabled', !visible);
+        $('#cs-shows-delete').toggle(visible).prop('disabled', !visible);
     }
 
     function load() {
         var endpoint = CLIENT.rank >= 2 ? apiBase() : publicApiBase();
         $.getJSON(endpoint, function (shows) {
             cachedShows = Array.isArray(shows) ? shows : [];
-            if (CLIENT.rank >= 2) {
-                render(cachedShows);
-            }
             renderScheduleCalendar(cachedShows);
         }).fail(function () {
-            if (CLIENT.rank >= 2) {
-                $('#cs-shows-list').html('<tr><td colspan=\"8\" class=\"text-danger\">Failed to load shows</td></tr>');
-            }
             $('#showschedule-grid').html('<div class=\"text-danger\">Failed to load schedule</div>');
         });
     }
@@ -2267,6 +2194,24 @@ var CSTShows = (function () {
         }
     });
     $('#cs-shows-clear').on('click', clearForm);
+    $('#cs-shows-run').on('click', function () { if (selectedId) action(selectedId, 'run'); });
+    $('#cs-shows-pause').on('click', function () { if (selectedId) action(selectedId, 'pause'); });
+    $('#cs-shows-resume').on('click', function () { if (selectedId) action(selectedId, 'resume'); });
+    $('#cs-shows-cancel').on('click', function () { if (selectedId) action(selectedId, 'cancel'); });
+    $('#cs-shows-delete').on('click', function () {
+        if (!selectedId) return;
+        if (!confirm('Delete this show?')) return;
+        $.ajax({
+            url: apiBase() + '/' + selectedId,
+            method: 'DELETE',
+            data: { _csrf: csrfField() }
+        }).done(function () {
+            clearForm();
+            load();
+        }).fail(function (xhr) {
+            alert('Delete failed: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.statusText));
+        });
+    });
     $('#cs-shows-color').on('change', function () {
         $('#cs-shows-color-hex').val(($(this).val() || '').toUpperCase());
     });
@@ -2310,6 +2255,7 @@ var CSTShows = (function () {
     renderDraftPlaylist();
     clearForm();
     setNotesEditorMode('edit');
+    updateSelectedShowActions();
     setupScheduleAutoRefresh();
     load();
 

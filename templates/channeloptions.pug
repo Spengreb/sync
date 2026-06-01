@@ -330,18 +330,14 @@ mixin shows
           button#cs-shows-create.btn.btn-primary Create Show
           button#cs-shows-update.btn.btn-default(type="button") Update Selected
           button#cs-shows-clear.btn.btn-default(type="button") Clear Form
-    table.table.table-striped.table-condensed(style="margin-top:12px")
-      thead
-        tr
-          th Name
-          th Status
-          th Next Run
-          th Est. End
-          th Timezone
-          th Recurrence
-          th Calendar
-          th Actions
-      tbody#cs-shows-list
+      .form-group
+        .col-sm-9.col-sm-offset-3
+          .btn-group(role="group")
+            button#cs-shows-run.btn.btn-primary(type="button", disabled) Run
+            button#cs-shows-pause.btn.btn-default(type="button", disabled) Pause
+            button#cs-shows-resume.btn.btn-success(type="button", disabled) Resume
+            button#cs-shows-cancel.btn.btn-warning(type="button", disabled) Cancel
+            button#cs-shows-delete.btn.btn-danger(type="button", disabled) Delete
 
 mixin integrations
   #cs-integrations.tab-pane
