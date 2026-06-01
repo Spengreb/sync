@@ -9,6 +9,8 @@ var Config = require("./config");
 var db = require("./database");
 var Promise = require("bluebird");
 const shows = require('./shows');
+const calendarDB = require('./database/calendar-integrations');
+const integrationsApi = require('./web/routes/api/integrations');
 
 const LOGGER = require('@calzoneman/jsli')('bgtask');
 
@@ -113,6 +115,58 @@ function initShowScheduler() {
     }, SCHEDULE_INTERVAL);
 }
 
+function initCalendarAutoSyncScheduler() {
+    const AUTO_SYNC_INTERVAL_MS = 60 * 1000;
+    const AUTO_SYNC_PERIOD_MINUTES = 30;
+    let running = false;
+
+    function inStaggerSlot(integrationId, now) {
+        const slot = Number(integrationId || 0) % AUTO_SYNC_PERIOD_MINUTES;
+        const minute = new Date(now).getUTCMinutes() % AUTO_SYNC_PERIOD_MINUTES;
+        return slot === minute;
+    }
+
+    setInterval(async () => {
+        if (running) {
+            return;
+        }
+
+        running = true;
+        try {
+            const now = Date.now();
+            const rows = await calendarDB.listConnectedByProvider('google');
+            for (const integration of rows) {
+                if (!inStaggerSlot(integration.id, now)) {
+                    continue;
+                }
+                if (integration.last_sync_at && now - integration.last_sync_at < AUTO_SYNC_PERIOD_MINUTES * 60 * 1000) {
+                    continue;
+                }
+
+                try {
+                    await integrationsApi.syncIntegrationNow({
+                        provider: 'google',
+                        integration,
+                        channelRow: { id: integration.channel_id },
+                        enforceCooldown: false
+                    });
+                } catch (err) {
+                    LOGGER.warn(
+                        'Auto calendar sync failed integration=%s channel=%s: %s',
+                        integration.id,
+                        integration.channel_id,
+                        err && (err.stack || err.message) || err
+                    );
+                }
+            }
+        } catch (err) {
+            LOGGER.error('Calendar auto-sync scheduler failure: %s', err.stack || err);
+        } finally {
+            running = false;
+        }
+    }, AUTO_SYNC_INTERVAL_MS);
+}
+
 module.exports = function (Server) {
     if (init === Server) {
         LOGGER.warn("Attempted to re-init background tasks");
@@ -125,4 +179,5 @@ module.exports = function (Server) {
     initPasswordResetCleanup();
     initAccountCleanup();
     initShowScheduler();
+    initCalendarAutoSyncScheduler();
 };

@@ -337,6 +337,57 @@ async function syncGoogleIntegration({ integration, channelRow }) {
     };
 }
 
+async function syncIntegrationNow({ provider, integration, channelRow, enforceCooldown = true }) {
+    const lockKey = `${channelRow.id}:${provider}`;
+    const now = Date.now();
+    const current = CHANNEL_SYNC_STATE.get(lockKey) || { inFlight: false, lastRunAt: 0 };
+    if (current.inFlight) {
+        const err = new Error('Sync already in progress for this channel');
+        err.statusCode = 409;
+        throw err;
+    }
+    if (enforceCooldown && (now - current.lastRunAt < CHANNEL_SYNC_COOLDOWN_MS)) {
+        const retryAfterMs = CHANNEL_SYNC_COOLDOWN_MS - (now - current.lastRunAt);
+        const err = new Error('Sync cooldown active for this channel');
+        err.statusCode = 429;
+        err.retryAfterMs = retryAfterMs;
+        throw err;
+    }
+
+    CHANNEL_SYNC_STATE.set(lockKey, { inFlight: true, lastRunAt: now });
+    try {
+        let result;
+        if (provider === 'google') {
+            result = await runInGoogleQueue(() =>
+                syncGoogleIntegration({ integration, channelRow })
+            );
+        } else {
+            throw new Error('Unsupported provider');
+        }
+
+        const patch = Object.assign({
+            status: 'connected',
+            last_sync_at: Date.now(),
+            last_error: null
+        }, result && result.tokenPatch ? result.tokenPatch : {});
+        await calendarDB.updateIntegrationSyncResult(integration.id, patch);
+        return { success: true, synced: result ? result.synced : 0 };
+    } catch (err) {
+        await calendarDB.updateIntegrationSyncResult(integration.id, {
+            status: 'error',
+            last_sync_at: Date.now(),
+            last_error: err.message || 'Sync failed'
+        });
+        throw err;
+    } finally {
+        const st = CHANNEL_SYNC_STATE.get(lockKey);
+        if (st) {
+            st.inFlight = false;
+            CHANNEL_SYNC_STATE.set(lockKey, st);
+        }
+    }
+}
+
 router.get('/', async (req, res) => {
     const auth = await authorizeChannelAdmin(req, res, 3);
     if (!auth) return;
@@ -404,50 +455,27 @@ router.post('/:provider/sync-now', async (req, res) => {
         return res.status(404).json({ error: 'Connected integration not found' });
     }
 
-    const lockKey = `${auth.channelRow.id}:${provider}`;
-    const now = Date.now();
-    const current = CHANNEL_SYNC_STATE.get(lockKey) || { inFlight: false, lastRunAt: 0 };
-    if (current.inFlight) {
-        return res.status(409).json({ error: 'Sync already in progress for this channel' });
-    }
-    if (now - current.lastRunAt < CHANNEL_SYNC_COOLDOWN_MS) {
-        const retryAfterMs = CHANNEL_SYNC_COOLDOWN_MS - (now - current.lastRunAt);
-        return res.status(429).json({
-            error: 'Sync cooldown active for this channel',
-            retry_after_ms: retryAfterMs
-        });
-    }
-
-    CHANNEL_SYNC_STATE.set(lockKey, { inFlight: true, lastRunAt: now });
-
     try {
-        let result;
-        if (provider === 'google') {
-            result = await runInGoogleQueue(() =>
-                syncGoogleIntegration({ integration, channelRow: auth.channelRow })
-            );
-        }
-        const patch = Object.assign({
-            status: 'connected',
-            last_sync_at: Date.now(),
-            last_error: null
-        }, result && result.tokenPatch ? result.tokenPatch : {});
-        await calendarDB.updateIntegrationSyncResult(integration.id, patch);
-        res.json({ success: true, synced: result ? result.synced : 0 });
-    } catch (err) {
-        await calendarDB.updateIntegrationSyncResult(integration.id, {
-            status: 'error',
-            last_sync_at: Date.now(),
-            last_error: err.message || 'Sync failed'
+        const result = await syncIntegrationNow({
+            provider,
+            integration,
+            channelRow: auth.channelRow,
+            enforceCooldown: true
         });
-        res.status(400).json({ error: err.message || 'Sync failed' });
-    } finally {
-        const st = CHANNEL_SYNC_STATE.get(lockKey);
-        if (st) {
-            st.inFlight = false;
-            CHANNEL_SYNC_STATE.set(lockKey, st);
+        res.json(result);
+    } catch (err) {
+        if (err.statusCode === 409) {
+            return res.status(409).json({ error: err.message });
         }
+        if (err.statusCode === 429) {
+            return res.status(429).json({
+                error: err.message,
+                retry_after_ms: err.retryAfterMs || CHANNEL_SYNC_COOLDOWN_MS
+            });
+        }
+        res.status(400).json({ error: err.message || 'Sync failed' });
     }
 });
 
+router.syncIntegrationNow = syncIntegrationNow;
 module.exports = router;

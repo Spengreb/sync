@@ -39,6 +39,13 @@ async function listByChannel(channelId) {
     return rows.map(parseIntegrationRow);
 }
 
+async function listConnectedByProvider(provider) {
+    const rows = await knex()('channel_calendar_integrations')
+        .where({ provider, status: 'connected' })
+        .select();
+    return rows.map(parseIntegrationRow);
+}
+
 async function getByChannelProvider(channelId, provider) {
     const rows = await knex()('channel_calendar_integrations')
         .where({ channel_id: channelId, provider })
@@ -316,6 +323,7 @@ async function getGoogleLinksForShows(channelId, showIds) {
 }
 
 module.exports = {
+    listConnectedByProvider,
     listByChannel,
     getByChannelProvider,
     upsertGoogleIntegration,
