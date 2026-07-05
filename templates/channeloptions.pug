@@ -315,6 +315,14 @@ mixin shows
           #cs-shows-notes-rendered.form-control(style="display:none; height:auto; min-height:170px; overflow:auto;")
           p#cs-shows-notes-help.text-muted.small(style="margin-top:6px") Supports Markdown: headings, lists, bold, italics, inline code, images, and links.
       .form-group
+        label.control-label.col-sm-3 Notifications
+        .col-sm-9
+          #cs-shows-notification-steps
+          button#cs-shows-add-notification.btn.btn-default(type="button")
+            span.glyphicon.glyphicon-plus
+            |  Add Notification
+          p.text-muted.small(style="margin-top:6px") Notification targets will be selectable here after Discord, Matrix, Telegram, and ntfy integrations are added.
+      .form-group
         label.control-label.col-sm-3(for="cs-shows-mediaurl") Show Playlist
         .col-sm-9
           .input-group(style="margin-bottom:8px")

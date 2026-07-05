@@ -42,6 +42,12 @@ async function attachGoogleCalendarLinks(channelId, showsList) {
     });
 }
 
+function stripPublicPrivateFields(show) {
+    const publicShow = Object.assign({}, show);
+    delete publicShow.notification_plan;
+    return publicShow;
+}
+
 function sanitizePlaylist(list) {
     if (!Array.isArray(list)) return [];
     return list
@@ -51,6 +57,35 @@ function sanitizePlaylist(list) {
             pos: item && item.pos === 'next' ? 'next' : 'end'
         }))
         .filter(item => item.id && item.type);
+}
+
+function sanitizeNotificationPlan(input) {
+    const rawSteps = input && Array.isArray(input.steps) ? input.steps : [];
+    const steps = [];
+    rawSteps.slice(0, 20).forEach(step => {
+        const offset = parseInt(step && step.offset_minutes, 10);
+        if (isNaN(offset) || offset < 0 || offset > 10080) {
+            return;
+        }
+
+        const messageRaw = step && step.message !== undefined ? String(step.message) : '';
+        const message = messageRaw.substring(0, 4000).trim();
+        const targetIds = Array.isArray(step && step.target_ids)
+            ? step.target_ids
+                .map(id => String(id || '').trim())
+                .filter(id => id)
+                .slice(0, 50)
+            : [];
+
+        steps.push({
+            offset_minutes: offset,
+            message,
+            target_ids: targetIds
+        });
+    });
+
+    steps.sort((a, b) => b.offset_minutes - a.offset_minutes);
+    return { steps };
 }
 
 function parseSchedule(input) {
@@ -152,11 +187,16 @@ function validateShowPayload(body, old = null) {
         color = normalized.toUpperCase();
     }
 
+    const notificationPlan = body.notification_plan !== undefined
+        ? sanitizeNotificationPlan(body.notification_plan)
+        : (old && old.notification_plan ? old.notification_plan : { steps: [] });
+
     return {
         value: {
             name,
             notes,
             color,
+            notification_plan: notificationPlan,
             playlist,
             timezone,
             scheduled_for: scheduledFor,
@@ -246,7 +286,9 @@ router.get('/public', async (req, res) => {
     }
 
     const showsList = await showDB.listShows(channelRow.id);
-    const filtered = showsList.filter(show => PUBLIC_SHOW_STATUSES.has(show.status));
+    const filtered = showsList
+        .filter(show => PUBLIC_SHOW_STATUSES.has(show.status))
+        .map(stripPublicPrivateFields);
     const withLinks = await attachGoogleCalendarLinks(channelRow.id, filtered);
     res.json(withLinks);
 });

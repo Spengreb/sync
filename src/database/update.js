@@ -3,7 +3,7 @@ import Promise from 'bluebird';
 
 const LOGGER = require('@calzoneman/jsli')('database/update');
 
-const DB_VERSION = 17;
+const DB_VERSION = 18;
 var hasUpdates = [];
 
 module.exports.checkVersion = function () {
@@ -63,6 +63,8 @@ function update(version, cb) {
         addShowsEstimatedEndColumn(cb);
     } else if (version < 17) {
         addGoogleEventIndexTable(cb);
+    } else if (version < 18) {
+        addShowsNotificationPlanColumn(cb);
     }
 }
 
@@ -300,6 +302,20 @@ function addGoogleEventIndexTable(cb) {
         error => {
             if (error) {
                 LOGGER.error(`Failed to create channel_google_event_index table: ${error}`);
+                cb(error);
+                return;
+            }
+            cb();
+        }
+    );
+}
+
+function addShowsNotificationPlanColumn(cb) {
+    db.query(
+        "ALTER TABLE channel_shows ADD COLUMN notification_plan MEDIUMTEXT CHARACTER SET utf8mb4 NULL",
+        error => {
+            if (error) {
+                LOGGER.error(`Failed to add shows notification_plan column: ${error}`);
                 cb(error);
                 return;
             }

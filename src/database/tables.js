@@ -186,6 +186,7 @@ export async function initTables() {
         t.string('name', 100).notNullable();
         t.specificType('notes', 'mediumtext character set utf8mb4');
         t.string('color', 7).nullable();
+        t.specificType('notification_plan', 'mediumtext character set utf8mb4');
         t.specificType('playlist', 'mediumtext character set utf8mb4 not null');
         t.string('timezone', 64).notNullable().defaultTo('UTC');
         t.bigInteger('scheduled_for').notNullable();

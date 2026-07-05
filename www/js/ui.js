@@ -1452,6 +1452,8 @@ var CSTShows = (function () {
     var weekOffset = 0;
     var cachedShows = [];
     var notesEditorMode = 'edit';
+    var notificationSteps = [];
+    var notificationTargets = [];
     var REFRESH_MS = 15000;
     var scheduleRefreshTimer = null;
 
@@ -1663,6 +1665,99 @@ var CSTShows = (function () {
         });
     }
 
+    function defaultNotificationMessage(offsetMinutes) {
+        if (offsetMinutes === 0) {
+            return '{show_name} is starting now.\n{show_url}';
+        }
+        return '{show_name} starts in {time_until}.\n{show_url}';
+    }
+
+    function normalizeNotificationSteps(plan) {
+        var steps = plan && Array.isArray(plan.steps) ? plan.steps : [];
+        return steps.map(function (step) {
+            var offset = parseInt(step && step.offset_minutes, 10);
+            if (isNaN(offset) || offset < 0) offset = 0;
+            return {
+                offset_minutes: offset,
+                message: step && step.message ? String(step.message) : '',
+                target_ids: Array.isArray(step && step.target_ids) ? step.target_ids.slice(0) : []
+            };
+        });
+    }
+
+    function renderNotificationSteps() {
+        var wrap = $('#cs-shows-notification-steps').empty();
+        if (!notificationSteps.length) {
+            wrap.append('<p class="text-muted">No notifications configured for this show.</p>');
+            return;
+        }
+
+        notificationSteps.forEach(function (step, idx) {
+            var panel = $('<div class="panel panel-default">').appendTo(wrap);
+            var body = $('<div class="panel-body">').appendTo(panel);
+            var row = $('<div class="row">').appendTo(body);
+            var timing = $('<div class="col-sm-4">').appendTo(row);
+            $('<label>').text('When').appendTo(timing);
+            var inputGroup = $('<div class="input-group">').appendTo(timing);
+            $('<input class="form-control" type="number" min="0" max="10080" step="1">')
+                .val(step.offset_minutes)
+                .on('input', function () {
+                    var next = parseInt($(this).val(), 10);
+                    notificationSteps[idx].offset_minutes = isNaN(next) || next < 0 ? 0 : next;
+                })
+                .appendTo(inputGroup);
+            $('<span class="input-group-addon">minutes before</span>').appendTo(inputGroup);
+            $('<button class="btn btn-xs btn-link" type="button">At show time</button>')
+                .on('click', function () {
+                    notificationSteps[idx].offset_minutes = 0;
+                    renderNotificationSteps();
+                })
+                .appendTo(timing);
+
+            var targets = $('<div class="col-sm-8">').appendTo(row);
+            $('<label>').text('Targets').appendTo(targets);
+            if (!notificationTargets.length) {
+                $('<p class="text-muted" style="margin-bottom:0">')
+                    .text('No notification integrations are available yet.')
+                    .appendTo(targets);
+            } else {
+                notificationTargets.forEach(function (target) {
+                    var label = $('<label class="checkbox-inline">').appendTo(targets);
+                    $('<input type="checkbox">')
+                        .prop('checked', step.target_ids.indexOf(target.id) >= 0)
+                        .on('change', function () {
+                            var id = target.id;
+                            var selected = notificationSteps[idx].target_ids;
+                            if ($(this).prop('checked') && selected.indexOf(id) < 0) {
+                                selected.push(id);
+                            } else if (!$(this).prop('checked')) {
+                                notificationSteps[idx].target_ids = selected.filter(function (x) { return x !== id; });
+                            }
+                        })
+                        .appendTo(label);
+                    label.append(' ' + target.name);
+                });
+            }
+
+            $('<label style="margin-top:10px">').text('Message').appendTo(body);
+            $('<textarea class="form-control" rows="3" placeholder="{show_name} starts in {time_until}.">')
+                .val(step.message)
+                .on('input', function () {
+                    notificationSteps[idx].message = $(this).val();
+                })
+                .appendTo(body);
+            $('<p class="text-muted small" style="margin-top:6px">')
+                .text('Available variables: {show_name}, {channel_name}, {start_time}, {time_until}, {show_url}, {notes}.')
+                .appendTo(body);
+            $('<button class="btn btn-xs btn-danger" type="button">Remove Notification</button>')
+                .on('click', function () {
+                    notificationSteps.splice(idx, 1);
+                    renderNotificationSteps();
+                })
+                .appendTo(body);
+        });
+    }
+
     function resolveDraftTitles() {
         if (resolvingTitles || draftPlaylist.length === 0) {
             return;
@@ -1784,6 +1879,16 @@ var CSTShows = (function () {
             fill_mode: $('#cs-shows-fill-mode').val(),
             conflict_mode: $('#cs-shows-conflict-skip').prop('checked') ? 'skip' : 'force',
             start_playback: $('#cs-shows-start-playback').prop('checked'),
+            notification_plan: {
+                steps: notificationSteps.map(function (step) {
+                    var offset = parseInt(step.offset_minutes, 10);
+                    return {
+                        offset_minutes: isNaN(offset) || offset < 0 ? 0 : offset,
+                        message: String(step.message || '').trim(),
+                        target_ids: Array.isArray(step.target_ids) ? step.target_ids.slice(0) : []
+                    };
+                })
+            },
             playlist: draftPlaylist.map(function (item) {
                 return { id: item.id, type: item.type, pos: item.pos || 'end' };
             }),
@@ -1814,7 +1919,9 @@ var CSTShows = (function () {
         $('#cs-shows-color-hex').val('');
         $('#cs-shows-mediaurl').val('');
         draftPlaylist = [];
+        notificationSteps = [];
         renderDraftPlaylist();
+        renderNotificationSteps();
         updateNotesPreview();
         setNotesEditorMode('edit');
         updateSelectedShowActions();
@@ -1846,7 +1953,9 @@ var CSTShows = (function () {
                 pos: item.pos || 'end'
             };
         });
+        notificationSteps = normalizeNotificationSteps(show.notification_plan);
         renderDraftPlaylist();
+        renderNotificationSteps();
         updateNotesPreview();
         setNotesEditorMode('edit');
         resolveDraftTitles();
@@ -1856,6 +1965,11 @@ var CSTShows = (function () {
     function openShowsEditor() {
         showChannelSettings();
         $("#channeloptions a[href='#cs-shows']").tab('show');
+    }
+
+    function openShowForEdit(show) {
+        openShowsEditor();
+        selectShow(show);
     }
 
     function prefillScheduledDate(date) {
@@ -1934,6 +2048,16 @@ var CSTShows = (function () {
             } else {
                 $('#showdetails-notes').html(notesHtml);
             }
+            $('#showdetails-edit')
+                .toggle(CLIENT.rank >= 2)
+                .off('click.cstshows')
+                .on('click.cstshows', function () {
+                    $('#showdetails')
+                        .one('hidden.bs.modal.cstshows', function () {
+                            openShowForEdit(show);
+                        })
+                        .modal('hide');
+                });
             $('#showdetails').modal();
         }
 
@@ -2047,12 +2171,7 @@ var CSTShows = (function () {
                         .css('opacity', item.isStart ? '1' : '0.85')
                         .attr('title', notesPreview || label)
                         .on('click', function () {
-                            if (isAdmin) {
-                                openShowsEditor();
-                                selectShow(item.show);
-                            } else {
-                                openShowDetailsModal(item.show, item.date.getTime());
-                            }
+                            openShowDetailsModal(item.show, item.date.getTime());
                         })
                         .appendTo(cell);
                     if (item.isStart) {
@@ -2194,6 +2313,14 @@ var CSTShows = (function () {
         }
     });
     $('#cs-shows-clear').on('click', clearForm);
+    $('#cs-shows-add-notification').on('click', function () {
+        notificationSteps.push({
+            offset_minutes: 30,
+            message: defaultNotificationMessage(30),
+            target_ids: []
+        });
+        renderNotificationSteps();
+    });
     $('#cs-shows-run').on('click', function () { if (selectedId) action(selectedId, 'run'); });
     $('#cs-shows-pause').on('click', function () { if (selectedId) action(selectedId, 'pause'); });
     $('#cs-shows-resume').on('click', function () { if (selectedId) action(selectedId, 'resume'); });
@@ -2253,6 +2380,7 @@ var CSTShows = (function () {
         renderScheduleCalendar(cachedShows);
     });
     renderDraftPlaylist();
+    renderNotificationSteps();
     clearForm();
     setNotesEditorMode('edit');
     updateSelectedShowActions();

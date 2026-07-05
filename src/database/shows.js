@@ -9,6 +9,7 @@ function parseShowRow(row) {
 
     let playlist = [];
     let recurrenceMeta = null;
+    let notificationPlan = { steps: [] };
     try {
         playlist = JSON.parse(row.playlist || '[]');
     } catch (_err) {
@@ -21,6 +22,12 @@ function parseShowRow(row) {
         recurrenceMeta = null;
     }
 
+    try {
+        notificationPlan = row.notification_plan ? JSON.parse(row.notification_plan) : { steps: [] };
+    } catch (_err) {
+        notificationPlan = { steps: [] };
+    }
+
     return {
         id: row.id,
         channel_name: row.channel_name,
@@ -28,6 +35,7 @@ function parseShowRow(row) {
         name: row.name,
         notes: row.notes || null,
         color: row.color || null,
+        notification_plan: notificationPlan,
         playlist,
         timezone: row.timezone,
         scheduled_for: row.scheduled_for,
@@ -54,6 +62,7 @@ function serializeShowInput(input) {
         name: input.name,
         notes: input.notes || null,
         color: input.color || null,
+        notification_plan: JSON.stringify(input.notification_plan || { steps: [] }),
         playlist: JSON.stringify(input.playlist || []),
         timezone: input.timezone,
         scheduled_for: input.scheduled_for,
