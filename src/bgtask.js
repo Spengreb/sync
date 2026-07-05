@@ -9,6 +9,7 @@ var Config = require("./config");
 var db = require("./database");
 var Promise = require("bluebird");
 const shows = require('./shows');
+const showNotifications = require('./show-notifications');
 const calendarDB = require('./database/calendar-integrations');
 const integrationsApi = require('./web/routes/api/integrations');
 
@@ -106,6 +107,7 @@ function initShowScheduler() {
 
         running = true;
         try {
+            await showNotifications.pollAndSendDueNotifications();
             await shows.pollAndRunDueShows();
         } catch (error) {
             LOGGER.error('Show scheduler failure: %s', error.stack || error);

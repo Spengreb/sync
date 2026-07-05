@@ -402,6 +402,21 @@ Resolve up to 50 media entries to display-ready titles before saving a show. Min
 }
 ```
 
+#### `GET /channels/:channel/notification-integrations/targets`
+
+List connected notification targets that can be referenced by a show notification plan. Minimum rank: **2 (Mod)**.
+
+This endpoint supports bot Bearer auth. Integration create/update/delete endpoints are web-session admin only; bots should only list target IDs and attach them to show notification plans.
+
+**Response:**
+
+```json
+[
+  { "id": "12", "provider": "discord", "name": "Discord announcements" },
+  { "id": "18", "provider": "ntfy", "name": "ntfy public" }
+]
+```
+
 #### `POST /channels/:channel/shows`
 
 Create a show. Minimum rank: **2 (Mod)**.
@@ -443,6 +458,20 @@ Run control action.
   "playlist": [
     { "type": "yt", "id": "dQw4w9WgXcQ", "pos": "end" }
   ],
+  "notification_plan": {
+    "steps": [
+      {
+        "offset_minutes": 60,
+        "message": "{show_name} starts in {time_until}.\n{show_url}\n{notes}",
+        "target_ids": ["12"]
+      },
+      {
+        "offset_minutes": 0,
+        "message": "{show_name} is starting now.\n{show_url}",
+        "target_ids": ["12", "18"]
+      }
+    ]
+  },
   "status": "scheduled"
 }
 ```
@@ -459,7 +488,45 @@ Run control action.
 - `fill_mode`: `append | replace`
 - `conflict_mode`: `force | skip`
 - `playlist`: non-empty array of media entries (`type`, `id`, optional `pos: next|end`)
+- `notification_plan`: optional object with `steps`, capped to 20 steps
+- `notification_plan.steps[].offset_minutes`: integer from `0` to `10080`; `0` means show time
+- `notification_plan.steps[].message`: optional template string, capped to 4,000 chars
+- `notification_plan.steps[].target_ids`: notification target IDs from `GET /channels/:channel/notification-integrations/targets`
 - `status`: one of `draft | scheduled | paused | running | completed | failed | canceled` (`running` is accepted but normalized to `scheduled` on write)
+
+Notification message templates support `{show_name}`, `{channel_name}`, `{start_time}`, `{time_until}`, `{show_url}`, `{notes}`, `{note}`, and `{show_notes}`. `{notes}` preserves image/link URLs for notification clients. `{notes_text}` removes Markdown links and formatting, and `{notes_markdown}` keeps the raw show notes Markdown.
+
+#### `POST /channels/:channel/shows/test-notification`
+
+Immediately send one notification step without saving a delivery record. Minimum rank: **2 (Mod)**.
+
+**Body:**
+
+```json
+{
+  "show": {
+    "name": "Friday Prime",
+    "notes": "Preview image: ![poster](https://example.com/poster.jpg)",
+    "scheduled_for": "2026-05-22T19:00:00.000Z",
+    "timezone": "America/New_York"
+  },
+  "step": {
+    "offset_minutes": 30,
+    "message": "{show_name} starts in {time_until}.\n{show_url}\n{notes}",
+    "target_ids": ["12", "18"]
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "sent": [{ "id": "12", "name": "Discord announcements", "provider": "discord" }],
+  "failed": [],
+  "message": "Friday Prime starts in 30 minutes.\nhttps://example.com/r/my-channel\nPreview image:\nhttps://example.com/poster.jpg"
+}
+```
 
 **Action body schema:**
 
@@ -479,6 +546,15 @@ Run control action.
   "notes_html": "<p>Opening block</p>",
   "color": "#337AB7",
   "playlist": [{ "type": "yt", "id": "dQw4w9WgXcQ", "pos": "end" }],
+  "notification_plan": {
+    "steps": [
+      {
+        "offset_minutes": 60,
+        "message": "{show_name} starts in {time_until}.",
+        "target_ids": ["12"]
+      }
+    ]
+  },
   "timezone": "America/New_York",
   "scheduled_for": 1779476400000,
   "estimated_end_at": 1779483600000,

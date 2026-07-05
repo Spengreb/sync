@@ -349,7 +349,8 @@ mixin shows
 
 mixin integrations
   #cs-integrations.tab-pane
-    h4 Calendar Integrations
+    h4 Integrations
+    h5 Calendars
     p Connect this channel's shows schedule to external calendars.
     .alert.alert-info
       | Google Calendar uses OAuth. Tokens are stored encrypted server-side and bound to this channel.
@@ -372,6 +373,97 @@ mixin integrations
           th Connected By
           th Last Error
       tbody#cs-int-list
+    hr
+    h5 Notifications
+    p Create notification targets for show reminders.
+    .panel.panel-default.cs-notify-provider-panel
+      .panel-heading.clearfix
+        span Discord
+        button#cs-notify-discord-toggle.btn.btn-xs.btn-default.pull-right(type="button", data-toggle="collapse", data-target="#cs-notify-discord-form-wrap", aria-expanded="false", aria-controls="cs-notify-discord-form-wrap")
+          span.glyphicon.glyphicon-plus
+          |  Add Target
+      #cs-notify-discord-form-wrap.panel-collapse.collapse
+        .panel-body
+          form.form-horizontal(action="javascript:void(0)", role="form")
+            input#cs-notify-discord-id(type="hidden")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-discord-name") Name
+              .col-sm-9
+                input#cs-notify-discord-name.form-control(type="text", placeholder="Discord announcements", maxlength="100")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-discord-webhook-url") Webhook URL
+              .col-sm-9
+                input#cs-notify-discord-webhook-url.form-control(type="password", placeholder="https://discord.com/api/webhooks/...")
+                p.text-muted.small(style="margin-top:6px") Leave blank to keep the existing webhook URL when updating.
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-discord-username") Username
+              .col-sm-9
+                input#cs-notify-discord-username.form-control(type="text", placeholder="Optional webhook username", maxlength="80")
+            .form-group
+              .col-sm-9.col-sm-offset-3
+                button#cs-notify-discord-save.btn.btn-primary(type="button") Save Discord Target
+                button#cs-notify-discord-clear.btn.btn-default(type="button") Clear
+    .panel.panel-default.cs-notify-provider-panel
+      .panel-heading.clearfix
+        span ntfy
+        button#cs-notify-ntfy-toggle.btn.btn-xs.btn-default.pull-right(type="button", data-toggle="collapse", data-target="#cs-notify-ntfy-form-wrap", aria-expanded="false", aria-controls="cs-notify-ntfy-form-wrap")
+          span.glyphicon.glyphicon-plus
+          |  Add Target
+      #cs-notify-ntfy-form-wrap.panel-collapse.collapse
+        .panel-body
+          form.form-horizontal(action="javascript:void(0)", role="form")
+            input#cs-notify-ntfy-id(type="hidden")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-ntfy-name") Name
+              .col-sm-9
+                input#cs-notify-ntfy-name.form-control(type="text", placeholder="ntfy public topic", maxlength="100")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-ntfy-server") Server
+              .col-sm-9
+                input#cs-notify-ntfy-server.form-control(type="text", placeholder="https://ntfy.sh", value="https://ntfy.sh")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-ntfy-topic") Topic
+              .col-sm-9
+                input#cs-notify-ntfy-topic.form-control(type="text", placeholder="topic-name", maxlength="64")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-ntfy-token") Access Token
+              .col-sm-9
+                input#cs-notify-ntfy-token.form-control(type="password", placeholder="Optional bearer token")
+                p.text-muted.small(style="margin-top:6px") Leave blank to keep the existing token when updating.
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-ntfy-title") Default Title
+              .col-sm-9
+                input#cs-notify-ntfy-title.form-control(type="text", placeholder="Defaults to show name", maxlength="250")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-ntfy-priority") Priority
+              .col-sm-9
+                select#cs-notify-ntfy-priority.form-control
+                  option(value="") Default
+                  option(value="min") Min
+                  option(value="low") Low
+                  option(value="default") Default
+                  option(value="high") High
+                  option(value="urgent") Urgent
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-ntfy-tags") Tags
+              .col-sm-9
+                input#cs-notify-ntfy-tags.form-control(type="text", placeholder="tv,calendar", maxlength="250")
+            .form-group
+              .col-sm-9.col-sm-offset-3
+                button#cs-notify-ntfy-save.btn.btn-primary(type="button") Save ntfy Target
+                button#cs-notify-ntfy-clear.btn.btn-default(type="button") Clear
+    .cs-notify-list-wrap
+      table.table.table-striped.table-condensed
+        thead
+          tr
+            th Provider
+            th Name
+            th Status
+            th Endpoint
+            th Updated
+            th Last Error
+            th Actions
+        tbody#cs-notify-list
 
 mixin permeditor
   #cs-permedit.tab-pane

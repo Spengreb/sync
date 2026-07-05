@@ -78,6 +78,7 @@ router.use('/channels/:channel/playlist', require('./playlist'));
 router.use('/channels/:channel/settings', require('./settings'));
 router.use('/channels/:channel/shows', require('./shows'));
 router.use('/channels/:channel/integrations', require('./integrations'));
+router.use('/channels/:channel/notification-integrations', require('./notification-integrations'));
 router.use('/integrations', require('./integrations-oauth'));
 router.use('/channels/:channel', require('./moderation'));
 

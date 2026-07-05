@@ -3,6 +3,7 @@ const webserver = require('../../webserver');
 const showDB = require('../../../database/shows');
 const calendarDB = require('../../../database/calendar-integrations');
 const shows = require('../../../shows');
+const showNotifications = require('../../../show-notifications');
 const botDB = require('../../../database/bots');
 const infoGetter = require('../../../get-info');
 const { renderNotesHtml } = require('../../../util/markdown');
@@ -344,6 +345,61 @@ router.post('/resolve-media', async (req, res) => {
     }));
 
     res.json({ items: resolved });
+});
+
+router.post('/test-notification', async (req, res) => {
+    const auth = await authorizeChannel(req, res);
+    if (!auth) return;
+
+    const body = req.body || {};
+    const show = body.show || {};
+    const stepInput = body.step || {};
+    const targetIds = Array.isArray(stepInput.target_ids)
+        ? stepInput.target_ids.map(id => String(id || '').trim()).filter(id => id)
+        : [];
+    if (targetIds.length === 0) {
+        return res.status(400).json({ error: 'Select at least one notification target' });
+    }
+
+    const name = String(show.name || '').trim();
+    if (!name) {
+        return res.status(400).json({ error: 'Show name is required for test notifications' });
+    }
+
+    const timezone = String(show.timezone || 'UTC').trim();
+    if (!isValidTimeZone(timezone)) {
+        return res.status(400).json({ error: 'timezone must be a valid IANA time zone string' });
+    }
+
+    let scheduledFor = Date.now();
+    if (show.scheduled_for) {
+        scheduledFor = typeof show.scheduled_for === 'number'
+            ? show.scheduled_for
+            : parseSchedule(show.scheduled_for);
+        if (!scheduledFor) {
+            return res.status(400).json({ error: 'scheduled_for must be a valid date or timestamp' });
+        }
+    }
+
+    const result = await showNotifications.sendTestNotifications({
+        channelRow: auth.channelRow,
+        show: {
+            name,
+            notes: typeof show.notes === 'string' ? show.notes.substring(0, 20000) : '',
+            timezone,
+            scheduled_for: scheduledFor
+        },
+        step: {
+            offset_minutes: parseInt(stepInput.offset_minutes, 10) || 0,
+            message: String(stepInput.message || '').substring(0, 4000),
+            target_ids: targetIds
+        }
+    });
+
+    if (result.sent.length === 0 && result.failed.length > 0) {
+        return res.status(400).json(result);
+    }
+    res.json(result);
 });
 
 router.post('/', async (req, res) => {

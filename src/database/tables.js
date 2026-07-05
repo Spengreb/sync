@@ -297,4 +297,60 @@ export async function initTables() {
         t.unique(['integration_id', 'external_event_id'], 'channel_google_event_index_event_unique');
         t.index(['integration_id', 'show_id'], 'channel_google_event_index_show_idx');
     });
+
+    await ensureTable('channel_notification_integrations', t => {
+        t.charset('utf8');
+        t.increments('id').notNullable().primary();
+        t.integer('channel_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channels')
+            .onDelete('cascade');
+        t.string('provider', 32).notNullable();
+        t.string('name', 100).notNullable();
+        t.string('status', 20).notNullable().defaultTo('connected');
+        t.specificType('config_json', 'text character set utf8mb4');
+        t.specificType('token_encrypted', 'text character set utf8mb4');
+        t.specificType('last_error', 'text character set utf8mb4');
+        t.string('connected_by', 20).nullable();
+        t.string('updated_by', 20).nullable();
+        t.bigInteger('created_at').notNullable();
+        t.bigInteger('updated_at').notNullable();
+        t.index(['channel_id', 'provider', 'status'], 'channel_notification_integration_lookup');
+    });
+
+    await ensureTable('channel_show_notification_deliveries', t => {
+        t.charset('utf8');
+        t.increments('id').notNullable().primary();
+        t.integer('channel_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channels')
+            .onDelete('cascade');
+        t.integer('show_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channel_shows')
+            .onDelete('cascade');
+        t.integer('integration_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('channel_notification_integrations')
+            .onDelete('cascade');
+        t.string('provider', 32).notNullable();
+        t.bigInteger('occurrence_at').notNullable();
+        t.integer('offset_minutes').notNullable();
+        t.string('status', 20).notNullable().defaultTo('pending');
+        t.integer('attempts').notNullable().defaultTo(0);
+        t.bigInteger('last_attempt_at').nullable();
+        t.bigInteger('sent_at').nullable();
+        t.specificType('last_error', 'text character set utf8mb4');
+        t.bigInteger('created_at').notNullable();
+        t.bigInteger('updated_at').notNullable();
+        t.unique(
+            ['show_id', 'integration_id', 'occurrence_at', 'offset_minutes'],
+            'channel_show_notification_delivery_unique'
+        );
+        t.index(['status', 'updated_at'], 'channel_show_notification_delivery_status_idx');
+    });
 }

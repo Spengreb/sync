@@ -1465,6 +1465,10 @@ var CSTShows = (function () {
         return apiBase() + '/public';
     }
 
+    function notificationTargetsApiBase() {
+        return '/api/v1/channels/' + CHANNEL.name + '/notification-integrations/targets';
+    }
+
     function loadTimezoneOptions() {
         if (timezoneOptionsLoaded) return;
         timezoneOptionsLoaded = true;
@@ -1685,76 +1689,15 @@ var CSTShows = (function () {
         });
     }
 
-    function renderNotificationSteps() {
-        var wrap = $('#cs-shows-notification-steps').empty();
-        if (!notificationSteps.length) {
-            wrap.append('<p class="text-muted">No notifications configured for this show.</p>');
+    function loadNotificationTargets() {
+        if (CLIENT.rank < 2) {
+            notificationTargets = [];
+            renderNotificationSteps();
             return;
         }
-
-        notificationSteps.forEach(function (step, idx) {
-            var panel = $('<div class="panel panel-default">').appendTo(wrap);
-            var body = $('<div class="panel-body">').appendTo(panel);
-            var row = $('<div class="row">').appendTo(body);
-            var timing = $('<div class="col-sm-4">').appendTo(row);
-            $('<label>').text('When').appendTo(timing);
-            var inputGroup = $('<div class="input-group">').appendTo(timing);
-            $('<input class="form-control" type="number" min="0" max="10080" step="1">')
-                .val(step.offset_minutes)
-                .on('input', function () {
-                    var next = parseInt($(this).val(), 10);
-                    notificationSteps[idx].offset_minutes = isNaN(next) || next < 0 ? 0 : next;
-                })
-                .appendTo(inputGroup);
-            $('<span class="input-group-addon">minutes before</span>').appendTo(inputGroup);
-            $('<button class="btn btn-xs btn-link" type="button">At show time</button>')
-                .on('click', function () {
-                    notificationSteps[idx].offset_minutes = 0;
-                    renderNotificationSteps();
-                })
-                .appendTo(timing);
-
-            var targets = $('<div class="col-sm-8">').appendTo(row);
-            $('<label>').text('Targets').appendTo(targets);
-            if (!notificationTargets.length) {
-                $('<p class="text-muted" style="margin-bottom:0">')
-                    .text('No notification integrations are available yet.')
-                    .appendTo(targets);
-            } else {
-                notificationTargets.forEach(function (target) {
-                    var label = $('<label class="checkbox-inline">').appendTo(targets);
-                    $('<input type="checkbox">')
-                        .prop('checked', step.target_ids.indexOf(target.id) >= 0)
-                        .on('change', function () {
-                            var id = target.id;
-                            var selected = notificationSteps[idx].target_ids;
-                            if ($(this).prop('checked') && selected.indexOf(id) < 0) {
-                                selected.push(id);
-                            } else if (!$(this).prop('checked')) {
-                                notificationSteps[idx].target_ids = selected.filter(function (x) { return x !== id; });
-                            }
-                        })
-                        .appendTo(label);
-                    label.append(' ' + target.name);
-                });
-            }
-
-            $('<label style="margin-top:10px">').text('Message').appendTo(body);
-            $('<textarea class="form-control" rows="3" placeholder="{show_name} starts in {time_until}.">')
-                .val(step.message)
-                .on('input', function () {
-                    notificationSteps[idx].message = $(this).val();
-                })
-                .appendTo(body);
-            $('<p class="text-muted small" style="margin-top:6px">')
-                .text('Available variables: {show_name}, {channel_name}, {start_time}, {time_until}, {show_url}, {notes}.')
-                .appendTo(body);
-            $('<button class="btn btn-xs btn-danger" type="button">Remove Notification</button>')
-                .on('click', function () {
-                    notificationSteps.splice(idx, 1);
-                    renderNotificationSteps();
-                })
-                .appendTo(body);
+        $.getJSON(notificationTargetsApiBase(), function (rows) {
+            notificationTargets = Array.isArray(rows) ? rows : [];
+            renderNotificationSteps();
         });
     }
 
@@ -2236,6 +2179,7 @@ var CSTShows = (function () {
 
     function load() {
         var endpoint = CLIENT.rank >= 2 ? apiBase() : publicApiBase();
+        loadNotificationTargets();
         $.getJSON(endpoint, function (shows) {
             cachedShows = Array.isArray(shows) ? shows : [];
             renderScheduleCalendar(cachedShows);
@@ -2266,6 +2210,169 @@ var CSTShows = (function () {
             if (shouldAutoRefreshSchedule()) {
                 load();
             }
+        });
+    }
+
+    function providerLabel(provider) {
+        var labels = {
+            ntfy: 'ntfy.sh',
+            discord: 'Discord',
+            matrix: 'Matrix',
+            telegram: 'Telegram'
+        };
+        return labels[provider] || provider;
+    }
+
+    function groupedNotificationTargets() {
+        var grouped = {};
+        notificationTargets.forEach(function (target) {
+            var provider = target.provider || 'other';
+            if (!grouped[provider]) grouped[provider] = [];
+            grouped[provider].push(target);
+        });
+        return grouped;
+    }
+
+    function renderNotificationTargetPicker(targets, step, idx) {
+        $('<label>').text('Targets').appendTo(targets);
+        if (!notificationTargets.length) {
+            $('<p class="text-muted" style="margin-bottom:0">')
+                .text('No notification integrations are available yet.')
+                .appendTo(targets);
+            return;
+        }
+
+        var picker = $('<div class="show-notification-targets">').appendTo(targets);
+        var grouped = groupedNotificationTargets();
+        Object.keys(grouped).sort().forEach(function (provider) {
+            var section = $('<div class="show-notification-target-group">').appendTo(picker);
+            $('<div class="show-notification-target-provider">')
+                .text(providerLabel(provider))
+                .appendTo(section);
+            grouped[provider].forEach(function (target) {
+                var id = String(target.id);
+                var label = $('<label class="show-notification-target">').appendTo(section);
+                $('<input type="checkbox">')
+                    .prop('checked', step.target_ids.indexOf(id) >= 0)
+                    .on('change', function () {
+                        var selected = notificationSteps[idx].target_ids;
+                        if ($(this).prop('checked') && selected.indexOf(id) < 0) {
+                            selected.push(id);
+                        } else if (!$(this).prop('checked')) {
+                            notificationSteps[idx].target_ids = selected.filter(function (x) { return x !== id; });
+                        }
+                    })
+                    .appendTo(label);
+                $('<span class="show-notification-target-name">')
+                    .text(target.name)
+                    .appendTo(label);
+            });
+        });
+    }
+
+    function notificationStepPayload(step) {
+        return {
+            offset_minutes: Math.max(0, parseInt(step.offset_minutes, 10) || 0),
+            message: String(step.message || '').trim(),
+            target_ids: Array.isArray(step.target_ids) ? step.target_ids.slice(0) : []
+        };
+    }
+
+    function testNotificationStep(idx, button) {
+        var step = notificationSteps[idx];
+        if (!step) return;
+        if (!Array.isArray(step.target_ids) || step.target_ids.length === 0) {
+            alert('Select at least one notification target first.');
+            return;
+        }
+
+        var originalText = $(button).text();
+        $(button).prop('disabled', true).text('Sending...');
+        $.ajax({
+            url: apiBase() + '/test-notification',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                show: readFormPayload(),
+                step: notificationStepPayload(step),
+                _csrf: csrfField()
+            })
+        }).done(function (data) {
+            var sent = data && Array.isArray(data.sent) ? data.sent.length : 0;
+            var failed = data && Array.isArray(data.failed) ? data.failed.length : 0;
+            var msg = 'Test notification sent to ' + sent + ' target' + (sent === 1 ? '' : 's') + '.';
+            if (failed > 0) {
+                msg += ' Failed: ' + failed + '.';
+            }
+            alert(msg);
+        }).fail(function (xhr) {
+            var err = xhr && xhr.responseJSON && xhr.responseJSON.error;
+            if (!err && xhr && xhr.responseJSON && Array.isArray(xhr.responseJSON.failed)) {
+                err = xhr.responseJSON.failed.map(function (failure) {
+                    return (failure.name || failure.id || 'target') + ': ' + (failure.error || 'failed');
+                }).join('; ');
+            }
+            err = err || (xhr && xhr.statusText) || 'Test failed';
+            alert('Test notification failed: ' + err);
+        }).always(function () {
+            $(button).prop('disabled', false).text(originalText);
+        });
+    }
+
+    function renderNotificationSteps() {
+        var wrap = $('#cs-shows-notification-steps').empty();
+        if (!notificationSteps.length) {
+            wrap.append('<p class="text-muted">No notifications configured for this show.</p>');
+            return;
+        }
+
+        notificationSteps.forEach(function (step, idx) {
+            var panel = $('<div class="panel panel-default">').appendTo(wrap);
+            var body = $('<div class="panel-body">').appendTo(panel);
+            var row = $('<div class="row">').appendTo(body);
+            var timing = $('<div class="col-sm-4">').appendTo(row);
+            $('<label>').text('When').appendTo(timing);
+            var inputGroup = $('<div class="input-group">').appendTo(timing);
+            $('<input class="form-control" type="number" min="0" max="10080" step="1">')
+                .val(step.offset_minutes)
+                .on('input', function () {
+                    var next = parseInt($(this).val(), 10);
+                    notificationSteps[idx].offset_minutes = isNaN(next) || next < 0 ? 0 : next;
+                })
+                .appendTo(inputGroup);
+            $('<span class="input-group-addon">minutes before</span>').appendTo(inputGroup);
+            $('<button class="btn btn-xs btn-link" type="button">At show time</button>')
+                .on('click', function () {
+                    notificationSteps[idx].offset_minutes = 0;
+                    renderNotificationSteps();
+                })
+                .appendTo(timing);
+
+            var targets = $('<div class="col-sm-8">').appendTo(row);
+            renderNotificationTargetPicker(targets, step, idx);
+
+            $('<label style="margin-top:10px">').text('Message').appendTo(body);
+            $('<textarea class="form-control" rows="3" placeholder="{show_name} starts in {time_until}.">')
+                .val(step.message)
+                .on('input', function () {
+                    notificationSteps[idx].message = $(this).val();
+                })
+                .appendTo(body);
+            $('<p class="text-muted small" style="margin-top:6px">')
+                .text('Available variables: {show_name}, {channel_name}, {start_time}, {time_until}, {show_url}, {notes}, {notes_text}, {notes_markdown}.')
+                .appendTo(body);
+            $('<button class="btn btn-xs btn-default" type="button">Test Notification</button>')
+                .on('click', function () {
+                    testNotificationStep(idx, this);
+                })
+                .appendTo(body);
+            body.append(' ');
+            $('<button class="btn btn-xs btn-danger" type="button">Remove Notification</button>')
+                .on('click', function () {
+                    notificationSteps.splice(idx, 1);
+                    renderNotificationSteps();
+                })
+                .appendTo(body);
         });
     }
 
@@ -2393,6 +2500,7 @@ var CSTShows = (function () {
 var CSTIntegrations = (function () {
     var syncInFlight = false;
     var syncCooldownTimer = null;
+    var notificationRows = [];
 
     function csrfField() {
         return (typeof CSRF_TOKEN === 'string' && CSRF_TOKEN.length > 0) ? CSRF_TOKEN : '';
@@ -2400,6 +2508,10 @@ var CSTIntegrations = (function () {
 
     function apiBase() {
         return '/api/v1/channels/' + CHANNEL.name + '/integrations';
+    }
+
+    function notificationApiBase() {
+        return '/api/v1/channels/' + CHANNEL.name + '/notification-integrations';
     }
 
     function formatError(xhr, fallback) {
@@ -2488,12 +2600,232 @@ var CSTIntegrations = (function () {
         }
     }
 
+    function renderNotifications(rows) {
+        notificationRows = Array.isArray(rows) ? rows : [];
+        var tbody = $('#cs-notify-list').empty();
+        if (!notificationRows.length) {
+            tbody.append('<tr><td colspan="7" class="text-muted">No notification integrations connected</td></tr>');
+            return;
+        }
+
+        notificationRows.forEach(function (row) {
+            var config = row.config || {};
+            var tr = $('<tr>');
+            tr.append($('<td>').text(row.provider));
+            tr.append($('<td>').text(row.name));
+            tr.append($('<td>').text(row.status));
+            tr.append($('<td>').text(row.provider === 'discord'
+                ? 'Webhook URL stored encrypted'
+                : ((config.server_url || '') + '/' + (config.topic || ''))));
+            tr.append($('<td>').text(row.updated_at ? new Date(row.updated_at).toLocaleString() : ''));
+            tr.append($('<td>').text(row.last_error || ''));
+            var actions = $('<td>').appendTo(tr);
+            $('<button class="btn btn-xs btn-default" type="button">Edit</button>')
+                .on('click', function () {
+                    if (row.provider === 'discord') {
+                        fillDiscordForm(row);
+                    } else {
+                        fillNtfyForm(row);
+                    }
+                })
+                .appendTo(actions);
+            actions.append(' ');
+            $('<button class="btn btn-xs btn-danger" type="button">Disconnect</button>')
+                .on('click', function () {
+                    disconnectNotification(row);
+                })
+                .appendTo(actions);
+            tbody.append(tr);
+        });
+    }
+
     function load() {
         $.getJSON(apiBase(), function (rows) {
             render(rows);
         }).fail(function (xhr) {
             var msg = formatError(xhr, 'Failed to load integrations');
             $('#cs-int-list').html('<tr><td colspan="6" class="text-danger">' + msg + '</td></tr>');
+        });
+        $.getJSON(notificationApiBase(), function (rows) {
+            renderNotifications(rows);
+        }).fail(function (xhr) {
+            var msg = formatError(xhr, 'Failed to load notification integrations');
+            $('#cs-notify-list').html('<tr><td colspan="7" class="text-danger">' + msg + '</td></tr>');
+        });
+    }
+
+    function setNtfyFormToggle(expanded) {
+        var icon = expanded ? 'glyphicon-minus' : 'glyphicon-plus';
+        var text = expanded ? ' Hide Form' : ' Add Target';
+        $('#cs-notify-ntfy-toggle')
+            .attr('aria-expanded', expanded ? 'true' : 'false')
+            .contents()
+            .filter(function () { return this.nodeType === 3; })
+            .remove();
+        $('#cs-notify-ntfy-toggle .glyphicon')
+            .removeClass('glyphicon-plus glyphicon-minus')
+            .addClass(icon);
+        $('#cs-notify-ntfy-toggle').append(text);
+    }
+
+    function showNtfyForm() {
+        $('#cs-notify-ntfy-form-wrap').collapse('show');
+    }
+
+    function hideNtfyForm() {
+        $('#cs-notify-ntfy-form-wrap').collapse('hide');
+    }
+
+    function setDiscordFormToggle(expanded) {
+        var icon = expanded ? 'glyphicon-minus' : 'glyphicon-plus';
+        var text = expanded ? ' Hide Form' : ' Add Target';
+        $('#cs-notify-discord-toggle')
+            .attr('aria-expanded', expanded ? 'true' : 'false')
+            .contents()
+            .filter(function () { return this.nodeType === 3; })
+            .remove();
+        $('#cs-notify-discord-toggle .glyphicon')
+            .removeClass('glyphicon-plus glyphicon-minus')
+            .addClass(icon);
+        $('#cs-notify-discord-toggle').append(text);
+    }
+
+    function showDiscordForm() {
+        $('#cs-notify-discord-form-wrap').collapse('show');
+    }
+
+    function hideDiscordForm() {
+        $('#cs-notify-discord-form-wrap').collapse('hide');
+    }
+
+    function resetDiscordFormFields() {
+        $('#cs-notify-discord-id').val('');
+        $('#cs-notify-discord-name').val('');
+        $('#cs-notify-discord-webhook-url').val('');
+        $('#cs-notify-discord-username').val('');
+        $('#cs-notify-discord-save').text('Save Discord Target');
+    }
+
+    function clearDiscordForm() {
+        resetDiscordFormFields();
+        hideDiscordForm();
+    }
+
+    function fillDiscordForm(row) {
+        var config = row.config || {};
+        $('#cs-notify-discord-id').val(row.id);
+        $('#cs-notify-discord-name').val(row.name || '');
+        $('#cs-notify-discord-webhook-url').val('');
+        $('#cs-notify-discord-username').val(config.username || '');
+        $('#cs-notify-discord-save').text('Update Discord Target');
+        showDiscordForm();
+    }
+
+    function readDiscordPayload() {
+        return {
+            name: ($('#cs-notify-discord-name').val() || '').trim(),
+            webhook_url: ($('#cs-notify-discord-webhook-url').val() || '').trim(),
+            username: ($('#cs-notify-discord-username').val() || '').trim(),
+            _csrf: csrfField()
+        };
+    }
+
+    function saveDiscord() {
+        var id = ($('#cs-notify-discord-id').val() || '').trim();
+        var url = notificationApiBase() + '/discord' + (id ? '/' + id : '');
+        $.ajax({
+            url: url,
+            method: id ? 'PUT' : 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(readDiscordPayload())
+        }).done(function () {
+            clearDiscordForm();
+            load();
+            if (window.CSTShows && CSTShows.load) {
+                CSTShows.load();
+            }
+        }).fail(function (xhr) {
+            alert('Save Discord target failed: ' + formatError(xhr, 'Save failed'));
+        });
+    }
+
+    function resetNtfyFormFields() {
+        $('#cs-notify-ntfy-id').val('');
+        $('#cs-notify-ntfy-name').val('');
+        $('#cs-notify-ntfy-server').val('https://ntfy.sh');
+        $('#cs-notify-ntfy-topic').val('');
+        $('#cs-notify-ntfy-token').val('');
+        $('#cs-notify-ntfy-title').val('');
+        $('#cs-notify-ntfy-priority').val('');
+        $('#cs-notify-ntfy-tags').val('');
+        $('#cs-notify-ntfy-save').text('Save ntfy Target');
+    }
+
+    function clearNtfyForm() {
+        resetNtfyFormFields();
+        hideNtfyForm();
+    }
+
+    function fillNtfyForm(row) {
+        var config = row.config || {};
+        $('#cs-notify-ntfy-id').val(row.id);
+        $('#cs-notify-ntfy-name').val(row.name || '');
+        $('#cs-notify-ntfy-server').val(config.server_url || 'https://ntfy.sh');
+        $('#cs-notify-ntfy-topic').val(config.topic || '');
+        $('#cs-notify-ntfy-token').val('');
+        $('#cs-notify-ntfy-title').val(config.title || '');
+        $('#cs-notify-ntfy-priority').val(config.priority || '');
+        $('#cs-notify-ntfy-tags').val(config.tags || '');
+        $('#cs-notify-ntfy-save').text('Update ntfy Target');
+        showNtfyForm();
+    }
+
+    function readNtfyPayload() {
+        return {
+            name: ($('#cs-notify-ntfy-name').val() || '').trim(),
+            server_url: ($('#cs-notify-ntfy-server').val() || '').trim(),
+            topic: ($('#cs-notify-ntfy-topic').val() || '').trim(),
+            token: ($('#cs-notify-ntfy-token').val() || '').trim(),
+            title: ($('#cs-notify-ntfy-title').val() || '').trim(),
+            priority: $('#cs-notify-ntfy-priority').val(),
+            tags: ($('#cs-notify-ntfy-tags').val() || '').trim(),
+            _csrf: csrfField()
+        };
+    }
+
+    function saveNtfy() {
+        var id = ($('#cs-notify-ntfy-id').val() || '').trim();
+        var url = notificationApiBase() + '/ntfy' + (id ? '/' + id : '');
+        $.ajax({
+            url: url,
+            method: id ? 'PUT' : 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(readNtfyPayload())
+        }).done(function () {
+            clearNtfyForm();
+            load();
+            if (window.CSTShows && CSTShows.load) {
+                CSTShows.load();
+            }
+        }).fail(function (xhr) {
+            alert('Save ntfy target failed: ' + formatError(xhr, 'Save failed'));
+        });
+    }
+
+    function disconnectNotification(row) {
+        if (!confirm('Disconnect notification integration "' + row.name + '"?')) return;
+        $.ajax({
+            url: notificationApiBase() + '/' + row.provider + '/' + row.id,
+            method: 'DELETE',
+            contentType: 'application/json',
+            data: JSON.stringify({ _csrf: csrfField() })
+        }).done(function () {
+            load();
+            if (window.CSTShows && CSTShows.load) {
+                CSTShows.load();
+            }
+        }).fail(function (xhr) {
+            alert('Disconnect failed: ' + formatError(xhr, 'Disconnect failed'));
         });
     }
 
@@ -2580,7 +2912,31 @@ var CSTIntegrations = (function () {
     $('#cs-int-google-connect').on('click', connectGoogle);
     $('#cs-int-google-sync').on('click', syncGoogleNow);
     $('#cs-int-google-disconnect').on('click', disconnectGoogle);
+    $('#cs-notify-discord-save').on('click', saveDiscord);
+    $('#cs-notify-discord-clear').on('click', clearDiscordForm);
+    $('#cs-notify-discord-toggle').on('click', function () {
+        if (!$('#cs-notify-discord-form-wrap').hasClass('in')) {
+            resetDiscordFormFields();
+        }
+    });
+    $('#cs-notify-discord-form-wrap')
+        .on('shown.bs.collapse', function () { setDiscordFormToggle(true); })
+        .on('hidden.bs.collapse', function () { setDiscordFormToggle(false); });
+    $('#cs-notify-ntfy-save').on('click', saveNtfy);
+    $('#cs-notify-ntfy-clear').on('click', clearNtfyForm);
+    $('#cs-notify-ntfy-toggle').on('click', function () {
+        if (!$('#cs-notify-ntfy-form-wrap').hasClass('in')) {
+            resetNtfyFormFields();
+        }
+    });
+    $('#cs-notify-ntfy-form-wrap')
+        .on('shown.bs.collapse', function () { setNtfyFormToggle(true); })
+        .on('hidden.bs.collapse', function () { setNtfyFormToggle(false); });
     setSyncStatus('Idle', 'default');
+    setDiscordFormToggle(false);
+    setNtfyFormToggle(false);
+    resetDiscordFormFields();
+    resetNtfyFormFields();
 
     return { load: load };
 })();

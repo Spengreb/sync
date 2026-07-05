@@ -3,7 +3,7 @@ import Promise from 'bluebird';
 
 const LOGGER = require('@calzoneman/jsli')('database/update');
 
-const DB_VERSION = 18;
+const DB_VERSION = 19;
 var hasUpdates = [];
 
 module.exports.checkVersion = function () {
@@ -65,6 +65,8 @@ function update(version, cb) {
         addGoogleEventIndexTable(cb);
     } else if (version < 18) {
         addShowsNotificationPlanColumn(cb);
+    } else if (version < 19) {
+        addNotificationIntegrationTables(cb);
     }
 }
 
@@ -320,6 +322,67 @@ function addShowsNotificationPlanColumn(cb) {
                 return;
             }
             cb();
+        }
+    );
+}
+
+function addNotificationIntegrationTables(cb) {
+    db.query(
+        "CREATE TABLE IF NOT EXISTS channel_notification_integrations (" +
+        "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+        "channel_id INT UNSIGNED NOT NULL," +
+        "provider VARCHAR(32) NOT NULL," +
+        "name VARCHAR(100) NOT NULL," +
+        "status VARCHAR(20) NOT NULL DEFAULT 'connected'," +
+        "config_json TEXT CHARACTER SET utf8mb4 NULL," +
+        "token_encrypted TEXT CHARACTER SET utf8mb4 NULL," +
+        "last_error TEXT CHARACTER SET utf8mb4 NULL," +
+        "connected_by VARCHAR(20) NULL," +
+        "updated_by VARCHAR(20) NULL," +
+        "created_at BIGINT NOT NULL," +
+        "updated_at BIGINT NOT NULL," +
+        "KEY channel_notification_integration_lookup (channel_id, provider, status)," +
+        "CONSTRAINT fk_notification_integrations_channel FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE" +
+        ") CHARACTER SET utf8",
+        error => {
+            if (error) {
+                LOGGER.error(`Failed to create channel_notification_integrations table: ${error}`);
+                cb(error);
+                return;
+            }
+
+            db.query(
+                "CREATE TABLE IF NOT EXISTS channel_show_notification_deliveries (" +
+                "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+                "channel_id INT UNSIGNED NOT NULL," +
+                "show_id INT UNSIGNED NOT NULL," +
+                "integration_id INT UNSIGNED NOT NULL," +
+                "provider VARCHAR(32) NOT NULL," +
+                "occurrence_at BIGINT NOT NULL," +
+                "offset_minutes INT NOT NULL," +
+                "status VARCHAR(20) NOT NULL DEFAULT 'pending'," +
+                "attempts INT NOT NULL DEFAULT 0," +
+                "last_attempt_at BIGINT NULL," +
+                "sent_at BIGINT NULL," +
+                "last_error TEXT CHARACTER SET utf8mb4 NULL," +
+                "created_at BIGINT NOT NULL," +
+                "updated_at BIGINT NOT NULL," +
+                "UNIQUE KEY channel_show_notification_delivery_unique (show_id, integration_id, occurrence_at, offset_minutes)," +
+                "KEY channel_show_notification_delivery_status_idx (status, updated_at)," +
+                "CONSTRAINT fk_show_notification_delivery_channel FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE," +
+                "CONSTRAINT fk_show_notification_delivery_show FOREIGN KEY (show_id) REFERENCES channel_shows(id) ON DELETE CASCADE," +
+                "CONSTRAINT fk_show_notification_delivery_integration FOREIGN KEY (integration_id) REFERENCES channel_notification_integrations(id) ON DELETE CASCADE" +
+                ") CHARACTER SET utf8",
+                error => {
+                    if (error) {
+                        LOGGER.error(`Failed to create channel_show_notification_deliveries table: ${error}`);
+                        cb(error);
+                        return;
+                    }
+
+                    cb();
+                }
+            );
         }
     );
 }

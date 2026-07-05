@@ -306,6 +306,65 @@ li.ui-sortable-helper, li.ui-sortable-placeholder + li.queue_entry {
     height: auto;
 }
 
+.show-notification-targets {
+    margin-top: 4px;
+}
+
+.show-notification-target-group {
+    margin-bottom: 8px;
+}
+
+.show-notification-target-provider {
+    margin-bottom: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: #777;
+}
+
+.show-notification-target {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    min-height: 24px;
+    margin: 0;
+    padding: 2px 0;
+    font-weight: 400;
+    line-height: 1.25;
+}
+
+.show-notification-target input {
+    flex: 0 0 auto;
+    margin: 1px 0 0 0;
+}
+
+.show-notification-target-name {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.cs-notify-provider-panel {
+    margin-bottom: 12px;
+}
+
+.cs-notify-list-wrap {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.cs-notify-list-wrap .table {
+    margin-bottom: 0;
+}
+
+.cs-notify-list-wrap th,
+.cs-notify-list-wrap td {
+    vertical-align: middle !important;
+}
+
 .clear {
     clear: both;
 }
