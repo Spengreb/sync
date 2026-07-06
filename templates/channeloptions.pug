@@ -394,7 +394,7 @@ mixin integrations
               label.control-label.col-sm-3(for="cs-notify-discord-webhook-url") Webhook URL
               .col-sm-9
                 input#cs-notify-discord-webhook-url.form-control(type="password", placeholder="https://discord.com/api/webhooks/...")
-                p.text-muted.small(style="margin-top:6px") Leave blank to keep the existing webhook URL when updating.
+                p#cs-notify-discord-webhook-help.text-muted.small(style="margin-top:6px") Leave blank to keep the existing webhook URL when updating.
             .form-group
               label.control-label.col-sm-3(for="cs-notify-discord-username") Username
               .col-sm-9
@@ -429,7 +429,7 @@ mixin integrations
               label.control-label.col-sm-3(for="cs-notify-ntfy-token") Access Token
               .col-sm-9
                 input#cs-notify-ntfy-token.form-control(type="password", placeholder="Optional bearer token")
-                p.text-muted.small(style="margin-top:6px") Leave blank to keep the existing token when updating.
+                p#cs-notify-ntfy-token-help.text-muted.small(style="margin-top:6px") Leave blank to keep the existing token when updating.
             .form-group
               label.control-label.col-sm-3(for="cs-notify-ntfy-title") Default Title
               .col-sm-9

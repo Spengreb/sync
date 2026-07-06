@@ -2629,12 +2629,14 @@ var CSTIntegrations = (function () {
                     }
                 })
                 .appendTo(actions);
-            actions.append(' ');
-            $('<button class="btn btn-xs btn-danger" type="button">Disconnect</button>')
-                .on('click', function () {
-                    disconnectNotification(row);
-                })
-                .appendTo(actions);
+            if (row.status !== 'disconnected') {
+                actions.append(' ');
+                $('<button class="btn btn-xs btn-danger" type="button">Disconnect</button>')
+                    .on('click', function () {
+                        disconnectNotification(row);
+                    })
+                    .appendTo(actions);
+            }
             tbody.append(tr);
         });
     }
@@ -2704,6 +2706,7 @@ var CSTIntegrations = (function () {
         $('#cs-notify-discord-webhook-url').val('');
         $('#cs-notify-discord-username').val('');
         $('#cs-notify-discord-save').text('Save Discord Target');
+        $('#cs-notify-discord-webhook-help').text('Leave blank to keep the existing webhook URL when updating.');
     }
 
     function clearDiscordForm() {
@@ -2717,7 +2720,13 @@ var CSTIntegrations = (function () {
         $('#cs-notify-discord-name').val(row.name || '');
         $('#cs-notify-discord-webhook-url').val('');
         $('#cs-notify-discord-username').val(config.username || '');
-        $('#cs-notify-discord-save').text('Update Discord Target');
+        if (row.status === 'disconnected') {
+            $('#cs-notify-discord-save').text('Reconnect Discord Target');
+            $('#cs-notify-discord-webhook-help').text('Add the webhook URL again to reconnect this target.');
+        } else {
+            $('#cs-notify-discord-save').text('Update Discord Target');
+            $('#cs-notify-discord-webhook-help').text('Leave blank to keep the existing webhook URL when updating.');
+        }
         showDiscordForm();
     }
 
@@ -2732,12 +2741,20 @@ var CSTIntegrations = (function () {
 
     function saveDiscord() {
         var id = ($('#cs-notify-discord-id').val() || '').trim();
+        var payload = readDiscordPayload();
+        var existing = notificationRows.filter(function (row) {
+            return String(row.id) === id && row.provider === 'discord';
+        })[0];
+        if (existing && existing.status === 'disconnected' && !payload.webhook_url) {
+            alert('Add the webhook URL again to reconnect this Discord target.');
+            return;
+        }
         var url = notificationApiBase() + '/discord' + (id ? '/' + id : '');
         $.ajax({
             url: url,
             method: id ? 'PUT' : 'POST',
             contentType: 'application/json',
-            data: JSON.stringify(readDiscordPayload())
+            data: JSON.stringify(payload)
         }).done(function () {
             clearDiscordForm();
             load();
@@ -2759,6 +2776,7 @@ var CSTIntegrations = (function () {
         $('#cs-notify-ntfy-priority').val('');
         $('#cs-notify-ntfy-tags').val('');
         $('#cs-notify-ntfy-save').text('Save ntfy Target');
+        $('#cs-notify-ntfy-token-help').text('Leave blank to keep the existing token when updating.');
     }
 
     function clearNtfyForm() {
@@ -2776,7 +2794,13 @@ var CSTIntegrations = (function () {
         $('#cs-notify-ntfy-title').val(config.title || '');
         $('#cs-notify-ntfy-priority').val(config.priority || '');
         $('#cs-notify-ntfy-tags').val(config.tags || '');
-        $('#cs-notify-ntfy-save').text('Update ntfy Target');
+        if (row.status === 'disconnected') {
+            $('#cs-notify-ntfy-save').text('Reconnect ntfy Target');
+            $('#cs-notify-ntfy-token-help').text('Add the access token again to reconnect this target if the topic requires one.');
+        } else {
+            $('#cs-notify-ntfy-save').text('Update ntfy Target');
+            $('#cs-notify-ntfy-token-help').text('Leave blank to keep the existing token when updating.');
+        }
         showNtfyForm();
     }
 
