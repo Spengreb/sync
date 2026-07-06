@@ -179,6 +179,14 @@ playlist:
   # How often (in seconds), mediaUpdate packets are broadcast to clients
   update-interval: 5
 
+# Broadcast Box instances whose public stream URLs should be treated as WHEP
+# streams. For a configured host, https://example.com/stream-key is played by
+# negotiating with https://example.com/api/whep using stream-key as the bearer
+# token.
+broadcastBox:
+  hosts:
+    - b.siobud.com
+
 # If set to true, when the ipThrottle and lastguestlogin rate limiters are cleared
 # periodically, the garbage collector will be invoked immediately.
 # The server must be invoked with node --expose-gc index.js for this to have any effect.

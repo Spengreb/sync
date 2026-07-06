@@ -5,6 +5,8 @@ window.WhepPlayer = class WhepPlayer extends Player
     @load(data)
 
   load: (data) ->
+    @pc?.close?()
+    @pc = null
     @ready  = false
     @paused = true
     @setMediaProperties(data)
@@ -59,6 +61,10 @@ window.WhepPlayer = class WhepPlayer extends Player
         console.error 'WHEP negotiation failed:', err
 
     @pc = pc
+
+  destroy: ->
+    @pc?.close?()
+    @pc = null
 
   play: ->
     @paused = false

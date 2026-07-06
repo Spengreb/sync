@@ -29,7 +29,10 @@ export default function initialize(app, ioConfig, chanPath, getBannedChannel) {
         sendPug(res, 'channel', {
             channelName: req.params.channel,
             sioSource: `${socketBaseURL}/socket.io/socket.io.js`,
-            maxMsgLen: Config.get("max-chat-message-length")
+            maxMsgLen: Config.get("max-chat-message-length"),
+            serverConfig: {
+                broadcastBoxHosts: Config.get("broadcastBox.hosts")
+            }
         });
     });
 }

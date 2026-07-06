@@ -91,6 +91,9 @@ var defaults = {
         "max-items": 4000,
         "update-interval": 5
     },
+    broadcastBox: {
+        hosts: ["b.siobud.com"]
+    },
     ffmpeg: {
         enabled: false,
         "ffprobe-exec": "ffprobe"
@@ -394,6 +397,15 @@ function preprocessConfig(cfg) {
         // Match nothing
         cfg["link-domain-blacklist-regex"] = new RegExp("$x^", "gi");
     }
+
+    if (!Array.isArray(cfg.broadcastBox.hosts)) {
+        LOGGER.warn("broadcastBox.hosts must be an array; using an empty list");
+        cfg.broadcastBox.hosts = [];
+    }
+    cfg.broadcastBox.hosts = cfg.broadcastBox.hosts
+        .filter(host => typeof host === "string")
+        .map(host => host.trim().toLowerCase().replace(/^www\./, ""))
+        .filter(host => host.length > 0);
 
     if (cfg["youtube-v3-key"]) {
         require("@cytube/mediaquery/lib/provider/youtube").setApiKey(

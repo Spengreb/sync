@@ -233,6 +233,7 @@
             case "rt":
             case "cu":
             case "hl":
+            case "wp":
                 return true;
             default:
                 return false;

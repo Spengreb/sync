@@ -1371,9 +1371,13 @@ function parseMediaLink(url) {
         return { type: 'cm', id: url };
     }
 
-    switch(data.hostname.replace('www.', '')){
-        case 'streem.vereto.net':
-            return { type: 'wp', id: url }
+    var hostname = data.hostname.replace(/^www\./, '').toLowerCase();
+    var broadcastBoxHosts = SERVER_CONFIG.broadcastBoxHosts || [];
+    if (broadcastBoxHosts.indexOf(hostname) !== -1) {
+        return { type: 'wp', id: url };
+    }
+
+    switch(hostname){
         case 'youtube.com':
             if(data.pathname == '/watch'){
                 return { type: 'yt', id: data.searchParams.get('v') }
