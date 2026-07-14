@@ -121,6 +121,10 @@ var defaults = {
             "client-secret": "",
             "redirect-uri": ""
         }
+    },
+    oidc: {
+        "encryption-key": "",
+        providers: []
     }
 };
 

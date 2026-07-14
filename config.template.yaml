@@ -234,3 +234,21 @@ calendar-sync:
     # Must exactly match Google OAuth redirect URI
     # Example: https://your-domain/api/v1/integrations/google/callback
     redirect-uri: ''
+
+oidc:
+  # Only needed for OIDC providers created from the ACP.
+  # Configured providers below read client-secret directly from this file.
+  encryption-key: ''
+  providers:
+    # Example Kanidm connector.
+    # In Kanidm, configure the redirect URI as:
+    # https://your-domain/login/oidc/kanidm/callback
+    - id: kanidm
+      display-name: Kanidm
+      enabled: false
+      issuer-url: https://idm.example.com/oauth2/openid/veretube
+      client-id: veretube
+      client-secret: ''
+      scopes: openid profile email
+      username-claim: preferred_username
+      allow-auto-provision: false

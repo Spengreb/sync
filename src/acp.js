@@ -252,6 +252,72 @@ function handleForceUnload(user, data) {
     Logger.eventlog.log("[acp] " + eventUsername(user) + " forced unload of " + name);
 }
 
+function emitOidcProviders(user) {
+    db.oidc.listProviders().then(providers => {
+        user.socket.emit("acp-oidc-providers", providers);
+    }).catch(error => {
+        user.socket.emit("errMessage", {
+            msg: error.message
+        });
+    });
+}
+
+function handleListOidcProviders(user) {
+    emitOidcProviders(user);
+}
+
+function handleSaveOidcProvider(user, data) {
+    db.oidc.saveProvider(data).then(provider => {
+        Logger.eventlog.log("[acp] " + eventUsername(user) +
+                            " saved OIDC provider " + provider.id);
+        emitOidcProviders(user);
+    }).catch(error => {
+        user.socket.emit("errMessage", {
+            msg: error.message
+        });
+    });
+}
+
+function handleDeleteOidcProvider(user, data) {
+    if (!data || typeof data.id !== "string") {
+        return;
+    }
+
+    db.oidc.deleteProvider(data.id).then(() => {
+        Logger.eventlog.log("[acp] " + eventUsername(user) +
+                            " deleted OIDC provider " + data.id);
+        emitOidcProviders(user);
+    }).catch(error => {
+        user.socket.emit("errMessage", {
+            msg: error.message
+        });
+    });
+}
+
+function handleTestOidcProvider(user, data, ack) {
+    db.oidc.saveProvider(data).then(provider => {
+        return db.oidc.getEnabledProvider(provider.id);
+    }).then(provider => {
+        if (!provider) {
+            throw new Error("Provider must be enabled before testing");
+        }
+        return require("./web/oidc").discover(provider);
+    }).then(metadata => {
+        ack && ack({
+            ok: true,
+            issuer: metadata.issuer,
+            authorization_endpoint: metadata.authorization_endpoint,
+            token_endpoint: metadata.token_endpoint
+        });
+        emitOidcProviders(user);
+    }).catch(error => {
+        ack && ack({
+            ok: false,
+            error: error.message
+        });
+    });
+}
+
 function init(user) {
     var s = user.socket;
     s.on("acp-announce", handleAnnounce.bind(this, user));
@@ -265,6 +331,10 @@ function init(user) {
     s.on("acp-delete-channel", handleDeleteChannel.bind(this, user));
     s.on("acp-list-activechannels", handleListActiveChannels.bind(this, user));
     s.on("acp-force-unload", handleForceUnload.bind(this, user));
+    s.on("acp-list-oidc-providers", handleListOidcProviders.bind(this, user));
+    s.on("acp-save-oidc-provider", handleSaveOidcProvider.bind(this, user));
+    s.on("acp-delete-oidc-provider", handleDeleteOidcProvider.bind(this, user));
+    s.on("acp-test-oidc-provider", handleTestOidcProvider.bind(this, user));
 
     const globalBanDB = db.getGlobalBanDB();
     globalBanDB.listGlobalBans().then(bans => {

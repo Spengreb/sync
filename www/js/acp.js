@@ -11,6 +11,7 @@
     window.socket.on("connect", function () {
         window.socket.emit("initACP");
         window.socket.emit("acp-list-activechannels");
+        window.socket.emit("acp-list-oidc-providers");
         readEventlog();
     });
 
@@ -38,6 +39,7 @@ addMenuItem("#acp-user-lookup", "Users");
 addMenuItem("#acp-channel-lookup", "Channels");
 addMenuItem("#acp-loaded-channels", "Active Channels");
 addMenuItem("#acp-eventlog", "Event Log");
+addMenuItem("#acp-oidc-providers", "OIDC Providers");
 
 /* Log Viewer */
 function readSyslog() {
@@ -280,6 +282,102 @@ socket.on("acp-set-rank", function (data) {
         .children()[2]
         .innerHTML = data.rank;
 });
+
+/* OIDC providers */
+(function () {
+    function readForm() {
+        return {
+            id: $("#acp-oidc-id").val(),
+            display_name: $("#acp-oidc-display-name").val(),
+            enabled: $("#acp-oidc-enabled").prop("checked"),
+            issuer_url: $("#acp-oidc-issuer-url").val(),
+            client_id: $("#acp-oidc-client-id").val(),
+            client_secret: $("#acp-oidc-client-secret").val(),
+            scopes: $("#acp-oidc-scopes").val(),
+            username_claim: $("#acp-oidc-username-claim").val(),
+            allow_auto_provision: $("#acp-oidc-auto-provision").prop("checked")
+        };
+    }
+
+    function writeForm(provider) {
+        provider = provider || {};
+        $("#acp-oidc-id").val(provider.id || "").prop("disabled", !!provider.id);
+        $("#acp-oidc-display-name").val(provider.display_name || "");
+        $("#acp-oidc-enabled").prop("checked", !!provider.enabled);
+        $("#acp-oidc-issuer-url").val(provider.issuer_url || "");
+        $("#acp-oidc-client-id").val(provider.client_id || "");
+        $("#acp-oidc-client-secret").val("");
+        $("#acp-oidc-scopes").val(provider.scopes || "openid profile email");
+        $("#acp-oidc-username-claim").val(provider.username_claim || "preferred_username");
+        $("#acp-oidc-auto-provision").prop("checked", !!provider.allow_auto_provision);
+    }
+
+    $("#acp-oidc-save").click(function () {
+        socket.emit("acp-save-oidc-provider", readForm());
+    });
+
+    $("#acp-oidc-test").click(function () {
+        socket.emit("acp-test-oidc-provider", readForm(), function (result) {
+            if (!result || !result.ok) {
+                modalAlert({
+                    title: "OIDC Discovery Failed",
+                    textContent: result ? result.error : "No response"
+                });
+                return;
+            }
+
+            modalAlert({
+                title: "OIDC Discovery OK",
+                textContent: "Issuer: " + result.issuer + "\nAuthorization: " +
+                    result.authorization_endpoint + "\nToken: " + result.token_endpoint
+            });
+        });
+    });
+
+    $("#acp-oidc-new").click(function () {
+        writeForm(null);
+    });
+
+    socket.on("acp-oidc-providers", function (providers) {
+        var tbl = $("#acp-oidc-providers table");
+        tbl.find("tbody").remove();
+
+        providers.forEach(function (provider) {
+            var tr = $("<tr/>").appendTo(tbl);
+            $("<td/>").text(provider.id).appendTo(tr);
+            $("<td/>").text(provider.source || "acp").appendTo(tr);
+            $("<td/>").text(provider.display_name).appendTo(tr);
+            $("<td/>").text(provider.enabled ? "Yes" : "No").appendTo(tr);
+            $("<td/>").text(provider.issuer_url).appendTo(tr);
+            $("<td/>").text(provider.client_id).appendTo(tr);
+            $("<td/>").text(provider.allow_auto_provision ? "Yes" : "No").appendTo(tr);
+            var control = $("<td/>").appendTo(tr);
+            if (provider.source === "config") {
+                $("<span/>").addClass("text-muted")
+                    .text("Configured in config.yaml")
+                    .appendTo(control);
+            } else {
+                $("<button/>").addClass("btn btn-xs btn-default")
+                    .text("Edit")
+                    .click(function () {
+                        writeForm(provider);
+                    })
+                    .appendTo(control);
+                $("<button/>").addClass("btn btn-xs btn-danger")
+                    .text("Delete")
+                    .css("margin-left", "4px")
+                    .click(function () {
+                        if (confirm("Delete OIDC provider " + provider.id + "?")) {
+                            socket.emit("acp-delete-oidc-provider", {
+                                id: provider.id
+                            });
+                        }
+                    })
+                    .appendTo(control);
+            }
+        });
+    });
+})();
 
 /* Channel listing */
 (function () {

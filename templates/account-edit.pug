@@ -46,6 +46,33 @@ block content
           label.control-label(for="email") New Email
           input#email.form-control(type="email", name="email")
         button#changeemailbtn.btn.btn-danger.btn-block(type="submit") Change Email
+      hr
+      h3 OIDC Accounts
+      if oidcIdentities && oidcIdentities.length
+        table.table.table-striped.table-bordered
+          thead
+            tr
+              th Provider
+              th Subject
+              th Username
+              th Email
+              th
+          tbody
+            each identity in oidcIdentities
+              tr
+                td= identity.provider_display_name || identity.provider_id
+                td
+                  code= identity.subject
+                td= identity.preferred_username || ""
+                td= identity.email || ""
+                td
+                  form(action="/account/edit", method="post")
+                    input(type="hidden", name="_csrf", value=csrfToken)
+                    input(type="hidden", name="action", value="unlink_oidc")
+                    input(type="hidden", name="identity_id", value=identity.id)
+                    button.btn.btn-xs.btn-danger(type="submit") Unlink
+      else
+        p No OIDC accounts linked.
 
 append footer
   script(type="text/javascript").

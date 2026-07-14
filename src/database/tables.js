@@ -143,6 +143,39 @@ export async function initTables() {
         t.index('created_at');
     });
 
+    await ensureTable('oidc_providers', t => {
+        t.charset('utf8');
+        t.string('id', 64).notNullable().primary();
+        t.string('display_name', 100).notNullable();
+        t.boolean('enabled').notNullable().defaultTo(false);
+        t.string('issuer_url', 255).notNullable();
+        t.string('client_id', 255).notNullable();
+        t.specificType('client_secret_encrypted', 'text character set utf8mb4');
+        t.string('scopes', 255).notNullable().defaultTo('openid profile email');
+        t.boolean('allow_auto_provision').notNullable().defaultTo(false);
+        t.string('username_claim', 64).notNullable().defaultTo('preferred_username');
+        t.timestamps(/* useTimestamps */ true, /* defaultToNow */ true);
+        t.index('enabled');
+    });
+
+    await ensureTable('user_oidc_identities', t => {
+        t.charset('utf8');
+        t.increments('id').notNullable().primary();
+        t.integer('user_id')
+            .unsigned()
+            .notNullable()
+            .references('id').inTable('users')
+            .onDelete('cascade');
+        t.string('provider_id', 64).notNullable();
+        t.string('issuer', 255).notNullable();
+        t.string('subject', 255).notNullable();
+        t.string('email', 255).nullable();
+        t.string('preferred_username', 255).nullable();
+        t.timestamps(/* useTimestamps */ true, /* defaultToNow */ true);
+        t.unique(['provider_id', 'issuer', 'subject'], 'user_oidc_identity_unique');
+        t.index('user_id');
+    });
+
     await ensureTable('media_metadata_cache', t => {
         // The types of id and type are chosen for compatibility
         // with the existing channel_libraries table.

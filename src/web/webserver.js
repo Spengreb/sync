@@ -167,6 +167,19 @@ module.exports = {
         app.use(`/${chanPath}/:channel`, require('./middleware/ipsessioncookie').ipSessionCookieMiddleware);
         initializeLog(app);
         require('./middleware/authorize')(app, session);
+        app.use(async (req, res, next) => {
+            if (/\..+$/.test(req.path)) {
+                return next();
+            }
+
+            try {
+                res.locals.oidcLoginProviders = await require('../database').oidc.listEnabledProviders();
+            } catch (error) {
+                LOGGER.warn('Failed to load OIDC login providers for navbar: %s', error.stack || error);
+                res.locals.oidcLoginProviders = [];
+            }
+            next();
+        });
 
         if (webConfig.getEnableGzip()) {
             app.use(require('compression')({

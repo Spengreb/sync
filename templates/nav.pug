@@ -38,24 +38,30 @@ mixin navloginlogout()
     +navloginform()
 
 mixin navloginform()
-  .visible-lg
-    form#loginform.navbar-form.navbar-right(action="/login", method="post")
-      input(type="hidden", name="_csrf", value=csrfToken)
-      .form-group
-        input#username.form-control(type="text", name="name", placeholder="Username")
-      .form-group
-        input#password.form-control(type="password", name="password", placeholder="Password")
-      .form-group
-        .checkbox
-          label
-            input(type="checkbox", name="remember")
-            span.navbar-text-nofloat Remember me
-      button#login.btn.btn-default(type="submit") Login
-  .visible-md
-    p#loginform.navbar-text.pull-right
-      a#login.navbar-link(href="/login") Log in
-      span &nbsp;&middot;&nbsp;
-      a#register.navbar-link(href="/register") Register
+  ul.nav.navbar-nav.navbar-right(style="margin-right: 10px")
+    li.dropdown
+      a#login.dropdown-toggle(href="#", data-toggle="dropdown") Log in
+        b.caret
+      ul.dropdown-menu(style="padding: 15px; min-width: 280px")
+        li
+          form#loginform(action="/login", method="post", onclick="event.stopPropagation()")
+            input(type="hidden", name="_csrf", value=csrfToken)
+            input(type="hidden", name="dest", value=currentUrl)
+            .form-group
+              input#username.form-control(type="text", name="name", placeholder="Username")
+            .form-group
+              input#password.form-control(type="password", name="password", placeholder="Password")
+            .checkbox
+              label
+                input(type="checkbox", name="remember")
+                | Remember me
+            button.btn.btn-success.btn-block(type="submit") Login
+        if oidcLoginProviders && oidcLoginProviders.length
+          li.divider
+          each provider in oidcLoginProviders
+            li
+              a(href="/login/oidc/" + provider.id + "?dest=" + encodeURIComponent(currentUrl)) Login with #{provider.display_name}
+        li: a(href="/register") Register
 
 
 mixin navlogoutform()
@@ -64,4 +70,3 @@ mixin navlogoutform()
     span#welcome Welcome, #{loginName}
     span &nbsp;&middot;&nbsp;
     input#logout.navbar-link(type="submit", value="Log out")
-

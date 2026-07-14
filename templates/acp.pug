@@ -120,6 +120,66 @@ html(lang="en")
               select#acp-eventlog-filter.form-control(multiple="multiple", style="max-width: 25%")
               button#acp-eventlog-refresh.btn.btn-default Refresh
               pre#acp-eventlog-text
+            #acp-oidc-providers.acp-panel.col-md-12(style="display: none")
+              h3 OIDC Providers
+              table.table.table-bordered.table-striped
+                thead
+                  tr
+                    th ID
+                    th Source
+                    th Display Name
+                    th Enabled
+                    th Issuer
+                    th Client ID
+                    th Auto Provision
+                    th Control
+              h3 Provider
+              form#acp-oidc-form.form-horizontal(action="javascript:void(0)", role="form")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-id") ID
+                  .col-sm-10
+                    input#acp-oidc-id.form-control(type="text", placeholder="kanidm")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-display-name") Display Name
+                  .col-sm-10
+                    input#acp-oidc-display-name.form-control(type="text", placeholder="Kanidm")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-enabled") Enabled
+                  .col-sm-10
+                    .checkbox
+                      label
+                        input#acp-oidc-enabled(type="checkbox")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-issuer-url") Issuer URL
+                  .col-sm-10
+                    input#acp-oidc-issuer-url.form-control(type="url", placeholder="https://idm.example.com/oauth2/openid/veretube")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-client-id") Client ID
+                  .col-sm-10
+                    input#acp-oidc-client-id.form-control(type="text")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-client-secret") Client Secret
+                  .col-sm-10
+                    input#acp-oidc-client-secret.form-control(type="password", placeholder="Leave blank to keep existing secret")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-scopes") Scopes
+                  .col-sm-10
+                    input#acp-oidc-scopes.form-control(type="text", value="openid profile email")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-username-claim") Username Claim
+                  .col-sm-10
+                    input#acp-oidc-username-claim.form-control(type="text", value="preferred_username")
+                .form-group
+                  label.control-label.col-sm-2(for="acp-oidc-auto-provision") Auto Provision
+                  .col-sm-10
+                    .checkbox
+                      label
+                        input#acp-oidc-auto-provision(type="checkbox")
+                .form-group
+                  .col-sm-10.col-sm-offset-2
+                    button#acp-oidc-save.btn.btn-primary(type="submit") Save Provider
+                    button#acp-oidc-test.btn.btn-default(type="button", style="margin-left: 8px") Test Discovery
+                    button#acp-oidc-new.btn.btn-default(type="button", style="margin-left: 8px") New
 
     include footer
     +footer()

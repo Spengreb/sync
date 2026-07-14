@@ -37,8 +37,18 @@ function getSafeReferrer(req) {
 /**
  * Processes a login request.  Sets a cookie upon successful authentication
  */
-function handleLogin(req, res) {
+async function getLoginProviders() {
+    try {
+        return await db.oidc.listEnabledProviders();
+    } catch (error) {
+        LOGGER.warn("Failed to list OIDC providers: %s", error.stack || error);
+        return [];
+    }
+}
+
+async function handleLogin(req, res) {
     csrf.verify(req);
+    const oidcProviders = await getLoginProviders();
 
     var name = req.body.name;
     var password = req.body.password;
@@ -78,7 +88,8 @@ function handleLogin(req, res) {
             }
             sendPug(res, "login", {
                 loggedIn: false,
-                loginError: err
+                loginError: err,
+                oidcProviders
             });
             return;
         }
@@ -87,7 +98,8 @@ function handleLogin(req, res) {
             if (err) {
                 sendPug(res, "login", {
                     loggedIn: false,
-                    loginError: err
+                    loginError: err,
+                    oidcProviders
                 });
                 return;
             }
@@ -110,7 +122,7 @@ function handleLogin(req, res) {
 /**
  * Handles a GET request for /login
  */
-function handleLoginPage(req, res) {
+async function handleLoginPage(req, res) {
     if (res.locals.loggedIn) {
         return sendPug(res, "login", {
             wasAlreadyLoggedIn: true
@@ -118,7 +130,9 @@ function handleLoginPage(req, res) {
     }
 
     var redirect = getSafeReferrer(req);
-    var locals = {};
+    var locals = {
+        oidcProviders: await getLoginProviders()
+    };
     if (!/\/register/.test(redirect)) {
         locals.redirect = redirect;
     }
@@ -293,5 +307,6 @@ module.exports = {
         app.post("/register", (req, res) => {
             handleRegister(captchaConfig, captchaController, req, res);
         });
+        require("./oidc").init(app);
     }
 };

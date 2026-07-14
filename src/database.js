@@ -81,6 +81,7 @@ class Database {
 module.exports.Database = Database;
 module.exports.users = require("./database/accounts");
 module.exports.channels = require("./database/channels");
+module.exports.oidc = require("./database/oidc");
 
 module.exports.init = function (newDB) {
     if (newDB) {

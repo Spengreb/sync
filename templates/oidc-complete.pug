@@ -1,0 +1,45 @@
+extends layout.pug
+
+block content
+  .col-lg-6.col-lg-offset-3.col-md-6.col-md-offset-3
+    h2 Complete Login
+    if errorMessage
+      .alert.alert-danger.center
+        p= errorMessage
+    if !pending
+      .alert.alert-danger.center
+        p OIDC login session expired. Please try again.
+    else
+      .alert.alert-info
+        p No Veretube account is linked to this #{pending.provider_display_name} identity.
+        if pending.claims.preferred_username || pending.claims.email
+          p
+            if pending.claims.preferred_username
+              | Username: #{pending.claims.preferred_username}
+            if pending.claims.preferred_username && pending.claims.email
+              br
+            if pending.claims.email
+              | Email: #{pending.claims.email}
+
+      if pending.allow_auto_provision
+        h3 Create New Veretube Account
+        form(action="/login/oidc/" + pending.provider_id + "/complete", method="post")
+          input(type="hidden", name="_csrf", value=csrfToken)
+          input(type="hidden", name="action", value="create")
+          .form-group
+            label.control-label(for="oidc-create-username") Username
+            input#oidc-create-username.form-control(type="text", name="username", value=createUsername || pending.suggested_username)
+          button.btn.btn-success.btn-block(type="submit") Create Account
+        hr
+
+      h3 Link Existing Veretube Account
+      form(action="/login/oidc/" + pending.provider_id + "/complete", method="post")
+        input(type="hidden", name="_csrf", value=csrfToken)
+        input(type="hidden", name="action", value="link_existing")
+        .form-group
+          label.control-label(for="oidc-link-username") Username
+          input#oidc-link-username.form-control(type="text", name="name")
+        .form-group
+          label.control-label(for="oidc-link-password") Password
+          input#oidc-link-password.form-control(type="password", name="password")
+        button.btn.btn-primary.btn-block(type="submit") Link Existing Account

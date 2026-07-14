@@ -24,8 +24,28 @@ let emailController;
 /**
  * Handles a GET request for /account/edit
  */
-function handleAccountEditPage(req, res) {
-    sendPug(res, "account-edit", {});
+async function getOidcAccountLocals(req) {
+    const user = await webserver.authorize(req);
+    if (!user) {
+        return {
+            oidcIdentities: []
+        };
+    }
+
+    return {
+        oidcIdentities: await db.oidc.listIdentitiesForUser(user.id)
+    };
+}
+
+async function renderAccountEdit(req, res, locals) {
+    sendPug(res, "account-edit", Object.assign(
+        await getOidcAccountLocals(req),
+        locals || {}
+    ));
+}
+
+async function handleAccountEditPage(req, res) {
+    renderAccountEdit(req, res, {});
 }
 
 function verifyReferrer(req, expected) {
@@ -72,6 +92,9 @@ function handleAccountEdit(req, res) {
         case "change_email":
             handleChangeEmail(req, res);
             break;
+        case "unlink_oidc":
+            handleUnlinkOidc(req, res);
+            break;
         default:
             res.sendStatus(400);
             break;
@@ -94,7 +117,7 @@ async function handleChangePassword(req, res) {
     }
 
     if (newpassword.length === 0) {
-        sendPug(res, "account-edit", {
+        renderAccountEdit(req, res, {
             errorMessage: "New password must not be empty"
         });
         return;
@@ -102,7 +125,7 @@ async function handleChangePassword(req, res) {
 
     const reqUser = await webserver.authorize(req);
     if (!reqUser) {
-        sendPug(res, "account-edit", {
+        renderAccountEdit(req, res, {
             errorMessage: "You must be logged in to change your password"
         });
         return;
@@ -112,7 +135,7 @@ async function handleChangePassword(req, res) {
 
     db.users.verifyLogin(name, oldpassword, function (err, _user) {
         if (err) {
-            sendPug(res, "account-edit", {
+            renderAccountEdit(req, res, {
                 errorMessage: err
             });
             return;
@@ -120,7 +143,7 @@ async function handleChangePassword(req, res) {
 
         db.users.setPassword(name, newpassword, function (err, _dbres) {
             if (err) {
-                sendPug(res, "account-edit", {
+                renderAccountEdit(req, res, {
                     errorMessage: err
                 });
                 return;
@@ -131,7 +154,7 @@ async function handleChangePassword(req, res) {
 
             db.users.getUser(name, function (err, user) {
                 if (err) {
-                    return sendPug(res, "account-edit", {
+                    return renderAccountEdit(req, res, {
                         errorMessage: err
                     });
                 }
@@ -139,14 +162,14 @@ async function handleChangePassword(req, res) {
                 var expiration = new Date(parseInt(req.signedCookies.auth.split(":")[1]));
                 session.genSession(user, expiration, function (err, auth) {
                     if (err) {
-                        return sendPug(res, "account-edit", {
+                        return renderAccountEdit(req, res, {
                             errorMessage: err
                         });
                     }
 
                     webserver.setAuthCookie(req, res, expiration, auth);
 
-                    sendPug(res, "account-edit", {
+                    renderAccountEdit(req, res, {
                         successMessage: "Password changed."
                     });
                 });
@@ -171,7 +194,7 @@ function handleChangeEmail(req, res) {
     }
 
     if (!$util.isValidEmail(email) && email !== "") {
-        sendPug(res, "account-edit", {
+        renderAccountEdit(req, res, {
             errorMessage: "Invalid email address"
         });
         return;
@@ -179,7 +202,7 @@ function handleChangeEmail(req, res) {
 
     db.users.verifyLogin(name, password, function (err, _user) {
         if (err) {
-            sendPug(res, "account-edit", {
+            renderAccountEdit(req, res, {
                 errorMessage: err
             });
             return;
@@ -187,7 +210,7 @@ function handleChangeEmail(req, res) {
 
         db.users.setEmail(name, email, function (err, _dbres) {
             if (err) {
-                sendPug(res, "account-edit", {
+                renderAccountEdit(req, res, {
                     errorMessage: err
                 });
                 return;
@@ -195,10 +218,31 @@ function handleChangeEmail(req, res) {
             Logger.eventlog.log("[account] " + req.realIP +
                                 " changed email for " + name +
                                 " to " + email);
-            sendPug(res, "account-edit", {
+            renderAccountEdit(req, res, {
                 successMessage: "Email address changed."
             });
         });
+    });
+}
+
+async function handleUnlinkOidc(req, res) {
+    const user = await webserver.authorize(req);
+    if (!user) {
+        return renderAccountEdit(req, res, {
+            errorMessage: "You must be logged in to unlink an OIDC account"
+        });
+    }
+
+    const id = parseInt(req.body.identity_id, 10);
+    if (!id) {
+        return res.send(400);
+    }
+
+    await db.oidc.unlinkIdentity(user.id, id);
+    Logger.eventlog.log("[account] " + user.name + "@" + req.realIP +
+                        " unlinked OIDC identity " + id);
+    renderAccountEdit(req, res, {
+        successMessage: "OIDC account unlinked."
     });
 }
 

@@ -3,7 +3,7 @@ import Promise from 'bluebird';
 
 const LOGGER = require('@calzoneman/jsli')('database/update');
 
-const DB_VERSION = 19;
+const DB_VERSION = 22;
 var hasUpdates = [];
 
 module.exports.checkVersion = function () {
@@ -67,6 +67,12 @@ function update(version, cb) {
         addShowsNotificationPlanColumn(cb);
     } else if (version < 19) {
         addNotificationIntegrationTables(cb);
+    } else if (version < 20) {
+        addOidcTables(cb);
+    } else if (version < 21) {
+        dropOidcProviderForeignKey(cb);
+    } else if (version < 22) {
+        dropOidcProviderForeignKey(cb);
     }
 }
 
@@ -380,6 +386,90 @@ function addNotificationIntegrationTables(cb) {
                         return;
                     }
 
+                    cb();
+                }
+            );
+        }
+    );
+}
+
+function addOidcTables(cb) {
+    db.query(
+        "CREATE TABLE IF NOT EXISTS oidc_providers (" +
+        "id VARCHAR(64) NOT NULL PRIMARY KEY," +
+        "display_name VARCHAR(100) NOT NULL," +
+        "enabled TINYINT(1) NOT NULL DEFAULT 0," +
+        "issuer_url VARCHAR(255) NOT NULL," +
+        "client_id VARCHAR(255) NOT NULL," +
+        "client_secret_encrypted TEXT CHARACTER SET utf8mb4 NULL," +
+        "scopes VARCHAR(255) NOT NULL DEFAULT 'openid profile email'," +
+        "allow_auto_provision TINYINT(1) NOT NULL DEFAULT 0," +
+        "username_claim VARCHAR(64) NOT NULL DEFAULT 'preferred_username'," +
+        "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+        "updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
+        "KEY oidc_providers_enabled (enabled)" +
+        ") CHARACTER SET utf8",
+        error => {
+            if (error) {
+                LOGGER.error(`Failed to create oidc_providers table: ${error}`);
+                cb(error);
+                return;
+            }
+
+            db.query(
+                "CREATE TABLE IF NOT EXISTS user_oidc_identities (" +
+                "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+                "user_id INT UNSIGNED NOT NULL," +
+                "provider_id VARCHAR(64) NOT NULL," +
+                "issuer VARCHAR(255) NOT NULL," +
+                "subject VARCHAR(255) NOT NULL," +
+                "email VARCHAR(255) NULL," +
+                "preferred_username VARCHAR(255) NULL," +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+                "updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
+                "UNIQUE KEY user_oidc_identity_unique (provider_id, issuer, subject)," +
+                "KEY user_oidc_identities_user_id (user_id)," +
+                "CONSTRAINT fk_user_oidc_identity_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE" +
+                ") CHARACTER SET utf8",
+                error2 => {
+                    if (error2) {
+                        LOGGER.error(`Failed to create user_oidc_identities table: ${error2}`);
+                        cb(error2);
+                        return;
+                    }
+
+                    cb();
+                }
+            );
+        }
+    );
+}
+
+function dropOidcProviderForeignKey(cb) {
+    db.query(
+        "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE " +
+        "WHERE TABLE_SCHEMA = DATABASE() " +
+        "AND TABLE_NAME = 'user_oidc_identities' " +
+        "AND COLUMN_NAME = 'provider_id' " +
+        "AND REFERENCED_TABLE_NAME = 'oidc_providers'",
+        (error, rows) => {
+            if (error) {
+                LOGGER.warn(`Could not inspect OIDC provider foreign key, continuing: ${error}`);
+                cb();
+                return;
+            }
+
+            if (!rows || rows.length === 0) {
+                cb();
+                return;
+            }
+
+            db.query(
+                `ALTER TABLE user_oidc_identities DROP FOREIGN KEY \`${rows[0].CONSTRAINT_NAME}\``,
+                error2 => {
+                    if (error2) {
+                        LOGGER.warn(`Could not drop OIDC provider foreign key, continuing: ${error2}`);
+                    }
                     cb();
                 }
             );

@@ -17,6 +17,7 @@ function merge(locals, res) {
         csrfToken: typeof res.req.csrfToken === 'function' ? res.req.csrfToken() : '',
         baseUrl: getBaseUrl(res),
         channelPath: Config.get("channel-path"),
+        currentUrl: res.req.originalUrl || res.req.url || '/',
     };
     if (typeof locals !== "object") {
         return _locals;
@@ -42,6 +43,10 @@ function sendPug(res, view, locals) {
     locals.loggedIn = nvl(locals.loggedIn, res.locals.loggedIn);
     locals.loginName = nvl(locals.loginName, res.locals.loginName);
     locals.superadmin = nvl(locals.superadmin, res.locals.superadmin);
+    locals.oidcLoginProviders = nvl(
+        locals.oidcLoginProviders,
+        res.locals.oidcLoginProviders || []
+    );
 
     let renderFn = cache.get(view);
 
