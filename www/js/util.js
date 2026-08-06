@@ -3413,7 +3413,7 @@ function onEmoteClicked(emote) {
 }
 
 window.EMOTELIST = new EmoteList("#emotelist", onEmoteClicked);
-window.EMOTELIST.sortAlphabetical = USEROPTS.emotelist_sort;
+window.EMOTELIST.sortAlphabetical = true;
 
 class CSEmoteList extends EmoteList {
     constructor(selector) {

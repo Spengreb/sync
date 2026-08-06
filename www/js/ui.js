@@ -1085,8 +1085,19 @@ function updateEmoteBrowserScale() {
 function emoteBrowserMatches() {
     if (!CHANNEL.emotes) return [];
     var f = EMOTE_BROWSER_FILTER.toLowerCase();
-    return f ? CHANNEL.emotes.filter(function(e) { return e.name.toLowerCase().indexOf(f) !== -1; })
-             : CHANNEL.emotes;
+    var matches = f ? CHANNEL.emotes.filter(function(e) {
+        return e.name.toLowerCase().indexOf(f) !== -1;
+    }) : CHANNEL.emotes.slice();
+
+    matches.sort(function(a, b) {
+        var x = a.name.toLowerCase();
+        var y = b.name.toLowerCase();
+        if (x < y) return -1;
+        if (x > y) return 1;
+        return 0;
+    });
+
+    return matches;
 }
 
 function emoteBrowserRenderMore() {
