@@ -1926,6 +1926,9 @@ function tvLayout(event) {
     $("footer .container-fluid").removeClass("container-fluid").addClass("container");
 
     var $bar = $("<div/>").attr("id", "tv-controls-bar").appendTo($("#main"));
+    $("<div/>").attr("id", "tv-usercount")
+        .text($("#usercount").text())
+        .appendTo($("#main"));
     SCROLLCHAT = true;
     $("#newmessages-indicator").remove();
 
@@ -1934,7 +1937,8 @@ function tvLayout(event) {
     $("#videocontrols").detach().appendTo($bar);
 
     $("#messagebuffer").children().each(function() {
-        decorateTVMessage(this);
+        clearTVMessageFadeTimer($(this));
+        $(this).addClass("tv-msg-history-hidden");
     });
 
     var tvObserver = null;
@@ -2007,12 +2011,15 @@ function undoTVLayout() {
         $msg.removeClass("tv-msg tv-msg-fadeout");
         $msg.css("color", "");
     });
+    $("#messagebuffer").children(".tv-msg-history-hidden")
+        .removeClass("tv-msg-history-hidden");
     $("#messagebuffer .tv-injected-username").remove();
 
     $("#videocontrols").detach().appendTo("#rightcontrols");
     $("#emotelistbtn").detach().insertAfter($("#newpollbtn"));
     $("#tv-controls-bar form").detach().appendTo("#chatwrap");
     $("#tv-controls-bar").remove();
+    $("#tv-usercount").remove();
 
     $(".container-fluid").removeClass("container-fluid").addClass("container");
     $("footer .container").removeClass("container").addClass("container-fluid");

@@ -482,6 +482,7 @@ const Callbacks = {
             text += "s";
         }
         $("#usercount").text(text);
+        $("#tv-usercount").text(text);
     },
 
     chatMsg: function(data) {

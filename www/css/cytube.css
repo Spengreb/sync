@@ -976,6 +976,7 @@ body.tv #chatwrap {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
+    pointer-events: none;
 }
 
 body.tv #chatheader {
@@ -994,6 +995,10 @@ body.tv #messagebuffer {
     max-height: 100% !important;
     margin: 0;
     flex: 1 1 auto;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
 }
 
 body.tv #messagebuffer > * {
@@ -1002,6 +1007,11 @@ body.tv #messagebuffer > * {
     padding: 4px 8px;
     margin-bottom: 6px;
     text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
+    flex: 0 0 auto;
+}
+
+body.tv #messagebuffer > *.tv-msg-history-hidden {
+    display: none !important;
 }
 
 body.tv #messagebuffer > *.tv-msg {
@@ -1030,6 +1040,28 @@ body.tv #messagebuffer > *.tv-msg .username {
 
 body.tv #messagebuffer > *.tv-msg.tv-msg-fadeout {
     opacity: 0;
+}
+
+#tv-usercount {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 20;
+    padding: 5px 10px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    opacity: 0;
+    pointer-events: none;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
+    transition: opacity 0.3s ease;
+}
+
+body.tv-controls-visible #tv-usercount {
+    opacity: 1;
 }
 
 /* Controls bar — hidden until mouse moves */
