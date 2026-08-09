@@ -452,6 +452,59 @@ mixin integrations
               .col-sm-9.col-sm-offset-3
                 button#cs-notify-ntfy-save.btn.btn-primary(type="button") Save ntfy Target
                 button#cs-notify-ntfy-clear.btn.btn-default(type="button") Clear
+    .panel.panel-default.cs-notify-provider-panel
+      .panel-heading.clearfix
+        span Custom Webhook
+        button#cs-notify-custom-webhook-toggle.btn.btn-xs.btn-default.pull-right(type="button", data-toggle="collapse", data-target="#cs-notify-custom-webhook-form-wrap", aria-expanded="false", aria-controls="cs-notify-custom-webhook-form-wrap")
+          span.glyphicon.glyphicon-plus
+          |  Add Target
+      #cs-notify-custom-webhook-form-wrap.panel-collapse.collapse
+        .panel-body
+          form.form-horizontal(action="javascript:void(0)", role="form")
+            input#cs-notify-custom-webhook-id(type="hidden")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-custom-webhook-name") Name
+              .col-sm-9
+                input#cs-notify-custom-webhook-name.form-control(type="text", placeholder="Bot webhook", maxlength="100")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-custom-webhook-url") Webhook URL
+              .col-sm-9
+                input#cs-notify-custom-webhook-url.form-control(type="text", placeholder="https://bot.example.com/show-hook")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-custom-webhook-method") HTTP Verb
+              .col-sm-9
+                select#cs-notify-custom-webhook-method.form-control
+                  option(value="POST") POST
+                  option(value="PUT") PUT
+                  option(value="PATCH") PATCH
+                  option(value="DELETE") DELETE
+                  option(value="GET") GET
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-custom-webhook-headers") Headers JSON
+              .col-sm-9
+                textarea#cs-notify-custom-webhook-headers.form-control(rows="3", placeholder='{"X-Source":"cytube"}')
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-custom-webhook-body") Body Template
+              .col-sm-9
+                textarea#cs-notify-custom-webhook-body.form-control(rows="6", placeholder='{"event":"show_notification","show_name":"{show_name}","show_url":"{show_url}"}')
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-custom-webhook-content-type") Content Type
+              .col-sm-9
+                input#cs-notify-custom-webhook-content-type.form-control(type="text", placeholder="application/json")
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-custom-webhook-bearer-token") Bearer Token
+              .col-sm-9
+                input#cs-notify-custom-webhook-bearer-token.form-control(type="password", placeholder="Optional bearer token")
+                p#cs-notify-custom-webhook-token-help.text-muted.small(style="margin-top:6px") Leave blank to keep existing secrets when updating.
+            .form-group
+              label.control-label.col-sm-3(for="cs-notify-custom-webhook-secret-headers") Secret Headers JSON
+              .col-sm-9
+                textarea#cs-notify-custom-webhook-secret-headers.form-control(rows="3", placeholder='{"X-API-Key":"secret"}')
+                p.text-muted.small(style="margin-top:6px") Stored encrypted and not shown again after saving.
+            .form-group
+              .col-sm-9.col-sm-offset-3
+                button#cs-notify-custom-webhook-save.btn.btn-primary(type="button") Save Custom Webhook
+                button#cs-notify-custom-webhook-clear.btn.btn-default(type="button") Clear
     .cs-notify-list-wrap
       table.table.table-striped.table-condensed
         thead

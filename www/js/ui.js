@@ -2228,6 +2228,7 @@ var CSTShows = (function () {
         var labels = {
             ntfy: 'ntfy.sh',
             discord: 'Discord',
+            custom_webhook: 'Custom Webhook',
             matrix: 'Matrix',
             telegram: 'Telegram'
         };
@@ -2586,7 +2587,7 @@ var CSTIntegrations = (function () {
         rows.forEach(function (row) {
             var calendarId = (row.config && row.config.calendar_id) ? row.config.calendar_id : '';
             var tr = $('<tr>');
-            tr.append($('<td>').text(row.provider));
+            tr.append($('<td>').text(notificationProviderLabel(row.provider)));
             tr.append($('<td>').text(row.status));
             tr.append($('<td>').text(calendarId || ''));
             tr.append($('<td>').text(row.last_sync_at ? new Date(row.last_sync_at).toLocaleString() : 'Never'));
@@ -2625,9 +2626,7 @@ var CSTIntegrations = (function () {
             tr.append($('<td>').text(row.provider));
             tr.append($('<td>').text(row.name));
             tr.append($('<td>').text(row.status));
-            tr.append($('<td>').text(row.provider === 'discord'
-                ? 'Webhook URL stored encrypted'
-                : ((config.server_url || '') + '/' + (config.topic || ''))));
+            tr.append($('<td>').text(formatNotificationEndpoint(row, config)));
             tr.append($('<td>').text(row.updated_at ? new Date(row.updated_at).toLocaleString() : ''));
             tr.append($('<td>').text(row.last_error || ''));
             var actions = $('<td>').appendTo(tr);
@@ -2635,6 +2634,8 @@ var CSTIntegrations = (function () {
                 .on('click', function () {
                     if (row.provider === 'discord') {
                         fillDiscordForm(row);
+                    } else if (row.provider === 'custom_webhook') {
+                        fillCustomWebhookForm(row);
                     } else {
                         fillNtfyForm(row);
                     }
@@ -2650,6 +2651,25 @@ var CSTIntegrations = (function () {
             }
             tbody.append(tr);
         });
+    }
+
+    function formatNotificationEndpoint(row, config) {
+        if (row.provider === 'discord') {
+            return 'Webhook URL stored encrypted';
+        }
+        if (row.provider === 'custom_webhook') {
+            return ((config.method || 'POST') + ' ' + (config.webhook_url || '')).trim();
+        }
+        return ((config.server_url || '') + '/' + (config.topic || ''));
+    }
+
+    function notificationProviderLabel(provider) {
+        var labels = {
+            discord: 'Discord',
+            ntfy: 'ntfy.sh',
+            custom_webhook: 'Custom Webhook'
+        };
+        return labels[provider] || provider;
     }
 
     function load() {
@@ -2709,6 +2729,28 @@ var CSTIntegrations = (function () {
 
     function hideDiscordForm() {
         $('#cs-notify-discord-form-wrap').collapse('hide');
+    }
+
+    function setCustomWebhookFormToggle(expanded) {
+        var icon = expanded ? 'glyphicon-minus' : 'glyphicon-plus';
+        var text = expanded ? ' Hide Form' : ' Add Target';
+        $('#cs-notify-custom-webhook-toggle')
+            .attr('aria-expanded', expanded ? 'true' : 'false')
+            .contents()
+            .filter(function () { return this.nodeType === 3; })
+            .remove();
+        $('#cs-notify-custom-webhook-toggle .glyphicon')
+            .removeClass('glyphicon-plus glyphicon-minus')
+            .addClass(icon);
+        $('#cs-notify-custom-webhook-toggle').append(text);
+    }
+
+    function showCustomWebhookForm() {
+        $('#cs-notify-custom-webhook-form-wrap').collapse('show');
+    }
+
+    function hideCustomWebhookForm() {
+        $('#cs-notify-custom-webhook-form-wrap').collapse('hide');
     }
 
     function resetDiscordFormFields() {
@@ -2847,6 +2889,114 @@ var CSTIntegrations = (function () {
         });
     }
 
+    function defaultCustomWebhookBody() {
+        return JSON.stringify({
+            event: 'show_notification',
+            message: '{notification_message_json}',
+            show_name: '{show_name_json}',
+            channel_name: '{channel_name_json}',
+            starts_at: '{start_time_iso_json}',
+            offset_minutes: '{offset_minutes_json}',
+            show_url: '{show_url_json}',
+            notes: '{notes_text_json}'
+        }, null, 2);
+    }
+
+    function resetCustomWebhookFormFields() {
+        $('#cs-notify-custom-webhook-id').val('');
+        $('#cs-notify-custom-webhook-name').val('');
+        $('#cs-notify-custom-webhook-url').val('');
+        $('#cs-notify-custom-webhook-method').val('POST');
+        $('#cs-notify-custom-webhook-headers').val('{}');
+        $('#cs-notify-custom-webhook-body').val(defaultCustomWebhookBody());
+        $('#cs-notify-custom-webhook-content-type').val('application/json');
+        $('#cs-notify-custom-webhook-bearer-token').val('');
+        $('#cs-notify-custom-webhook-secret-headers').val('{}');
+        $('#cs-notify-custom-webhook-save').text('Save Custom Webhook');
+        $('#cs-notify-custom-webhook-token-help').text('Leave blank to keep existing secrets when updating.');
+    }
+
+    function clearCustomWebhookForm() {
+        resetCustomWebhookFormFields();
+        hideCustomWebhookForm();
+    }
+
+    function fillCustomWebhookForm(row) {
+        var config = row.config || {};
+        $('#cs-notify-custom-webhook-id').val(row.id);
+        $('#cs-notify-custom-webhook-name').val(row.name || '');
+        $('#cs-notify-custom-webhook-url').val(config.webhook_url || '');
+        $('#cs-notify-custom-webhook-method').val(config.method || 'POST');
+        $('#cs-notify-custom-webhook-headers').val(JSON.stringify(config.headers || {}, null, 2));
+        $('#cs-notify-custom-webhook-body').val(config.body_template || defaultCustomWebhookBody());
+        $('#cs-notify-custom-webhook-content-type').val(config.content_type || 'application/json');
+        $('#cs-notify-custom-webhook-bearer-token').val('');
+        $('#cs-notify-custom-webhook-secret-headers').val('{}');
+        if (row.status === 'disconnected') {
+            $('#cs-notify-custom-webhook-save').text('Reconnect Custom Webhook');
+            $('#cs-notify-custom-webhook-token-help').text('Add secrets again to reconnect this target if it requires them.');
+        } else {
+            $('#cs-notify-custom-webhook-save').text('Update Custom Webhook');
+            $('#cs-notify-custom-webhook-token-help').text('Leave blank to keep existing secrets when updating.');
+        }
+        showCustomWebhookForm();
+    }
+
+    function validateJsonObjectText(text, field) {
+        var raw = (text || '').trim();
+        if (!raw) return '{}';
+        try {
+            var parsed = JSON.parse(raw);
+            if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+                alert(field + ' must be a JSON object.');
+                return null;
+            }
+            return JSON.stringify(parsed);
+        } catch (_err) {
+            alert(field + ' must be valid JSON.');
+            return null;
+        }
+    }
+
+    function readCustomWebhookPayload() {
+        var headersJson = validateJsonObjectText($('#cs-notify-custom-webhook-headers').val(), 'Headers JSON');
+        if (headersJson === null) return null;
+        var secretHeadersJson = validateJsonObjectText($('#cs-notify-custom-webhook-secret-headers').val(), 'Secret Headers JSON');
+        if (secretHeadersJson === null) return null;
+        return {
+            name: ($('#cs-notify-custom-webhook-name').val() || '').trim(),
+            webhook_url: ($('#cs-notify-custom-webhook-url').val() || '').trim(),
+            method: $('#cs-notify-custom-webhook-method').val(),
+            headers_json: headersJson,
+            body_template: $('#cs-notify-custom-webhook-body').val() || '',
+            content_type: ($('#cs-notify-custom-webhook-content-type').val() || '').trim(),
+            bearer_token: ($('#cs-notify-custom-webhook-bearer-token').val() || '').trim(),
+            secret_headers_json: secretHeadersJson,
+            _csrf: csrfField()
+        };
+    }
+
+    function saveCustomWebhook() {
+        var id = ($('#cs-notify-custom-webhook-id').val() || '').trim();
+        var payload = readCustomWebhookPayload();
+        if (!payload) return;
+        var url = notificationApiBase() + '/custom_webhook' + (id ? '/' + id : '');
+        $.ajax({
+            url: url,
+            method: id ? 'PUT' : 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(payload)
+        }).done(function () {
+            clearCustomWebhookForm();
+            load();
+            if (window.CSTShows && CSTShows.load) {
+                CSTShows.load();
+            }
+        }).fail(function (xhr) {
+            alert('Save Custom Webhook failed: ' + formatError(xhr, 'Save failed'));
+        });
+    }
+
     function disconnectNotification(row) {
         if (!confirm('Disconnect notification integration "' + row.name + '"?')) return;
         $.ajax({
@@ -2967,11 +3117,23 @@ var CSTIntegrations = (function () {
     $('#cs-notify-ntfy-form-wrap')
         .on('shown.bs.collapse', function () { setNtfyFormToggle(true); })
         .on('hidden.bs.collapse', function () { setNtfyFormToggle(false); });
+    $('#cs-notify-custom-webhook-save').on('click', saveCustomWebhook);
+    $('#cs-notify-custom-webhook-clear').on('click', clearCustomWebhookForm);
+    $('#cs-notify-custom-webhook-toggle').on('click', function () {
+        if (!$('#cs-notify-custom-webhook-form-wrap').hasClass('in')) {
+            resetCustomWebhookFormFields();
+        }
+    });
+    $('#cs-notify-custom-webhook-form-wrap')
+        .on('shown.bs.collapse', function () { setCustomWebhookFormToggle(true); })
+        .on('hidden.bs.collapse', function () { setCustomWebhookFormToggle(false); });
     setSyncStatus('Idle', 'default');
     setDiscordFormToggle(false);
     setNtfyFormToggle(false);
+    setCustomWebhookFormToggle(false);
     resetDiscordFormFields();
     resetNtfyFormFields();
+    resetCustomWebhookFormFields();
 
     return { load: load };
 })();

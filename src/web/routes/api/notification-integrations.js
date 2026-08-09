@@ -1,13 +1,14 @@
 const express = require('express');
 const webserver = require('../../webserver');
 const notificationDB = require('../../../database/notification-integrations');
+const customWebhook = require('../../../integrations/custom-webhook');
 const discord = require('../../../integrations/discord');
 const ntfy = require('../../../integrations/ntfy');
 const botDB = require('../../../database/bots');
 const { getChannelRow, getUserEffectiveRank, hashToken } = require('./middleware');
 
 const router = express.Router({ mergeParams: true });
-const PROVIDERS = new Set(['discord', 'ntfy']);
+const PROVIDERS = new Set(['discord', 'ntfy', 'custom_webhook']);
 
 function sanitizeIntegration(row) {
     return {
@@ -167,12 +168,83 @@ function sanitizeDiscordPayload(body) {
     };
 }
 
+function parseJsonObject(raw, field) {
+    if (!raw) return { value: {} };
+    if (typeof raw === 'object' && !Array.isArray(raw)) return { value: raw };
+    try {
+        const parsed = JSON.parse(String(raw));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return { error: `${field} must be a JSON object` };
+        }
+        return { value: parsed };
+    } catch (_err) {
+        return { error: `${field} must be valid JSON` };
+    }
+}
+
+function sanitizeCustomWebhookPayload(body) {
+    const name = String((body && body.name) || '').trim();
+    if (!name || name.length > 100) {
+        return { error: 'name must be 1-100 characters' };
+    }
+
+    let webhookUrl;
+    let method;
+    let headers;
+    let secretHeaders;
+    try {
+        webhookUrl = customWebhook.normalizeUrl(body && body.webhook_url);
+        method = customWebhook.normalizeMethod(body && body.method);
+        const parsedHeaders = parseJsonObject(body && body.headers_json, 'headers_json');
+        if (parsedHeaders.error) return { error: parsedHeaders.error };
+        const parsedSecretHeaders = parseJsonObject(body && body.secret_headers_json, 'secret_headers_json');
+        if (parsedSecretHeaders.error) return { error: parsedSecretHeaders.error };
+        headers = customWebhook.normalizeHeaders(parsedHeaders.value);
+        secretHeaders = customWebhook.normalizeHeaders(parsedSecretHeaders.value, { allowAuthorization: true });
+    } catch (err) {
+        return { error: err.message };
+    }
+
+    let tokenEncrypted = null;
+    const bearerToken = body && Object.prototype.hasOwnProperty.call(body, 'bearer_token')
+        ? String(body.bearer_token || '').trim()
+        : '';
+    if (bearerToken || Object.keys(secretHeaders).length > 0) {
+        try {
+            tokenEncrypted = customWebhook.packSecrets({
+                bearer_token: bearerToken,
+                secret_headers: secretHeaders
+            });
+        } catch (err) {
+            return { error: err.message };
+        }
+    }
+
+    return {
+        value: {
+            name,
+            provider: 'custom_webhook',
+            config: {
+                webhook_url: webhookUrl,
+                method,
+                headers,
+                content_type: customWebhook.normalizeContentType(body && body.content_type),
+                body_template: customWebhook.normalizeBody(body && body.body_template)
+            },
+            token_encrypted: tokenEncrypted
+        }
+    };
+}
+
 function sanitizeProviderPayload(provider, body) {
     if (provider === 'discord') {
         return sanitizeDiscordPayload(body);
     }
     if (provider === 'ntfy') {
         return sanitizeNtfyPayload(body);
+    }
+    if (provider === 'custom_webhook') {
+        return sanitizeCustomWebhookPayload(body);
     }
     return { error: 'Unsupported provider' };
 }

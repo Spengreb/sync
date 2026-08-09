@@ -1,6 +1,7 @@
 const LOGGER = require('@calzoneman/jsli')('show-notifications');
 const Config = require('./config');
 const notificationDB = require('./database/notification-integrations');
+const customWebhook = require('./integrations/custom-webhook');
 const discord = require('./integrations/discord');
 const ntfy = require('./integrations/ntfy');
 
@@ -54,16 +55,18 @@ function formatNotesForNotification(text) {
         .trim();
 }
 
-function renderMessage(template, show, step, occurrenceAt) {
+function buildTemplateContext(show, step, occurrenceAt) {
     const start = new Date(occurrenceAt);
     const notesMarkdown = String(show.notes || '').trim();
     const notes = formatNotesForNotification(notesMarkdown);
     const notesText = stripMarkdown(notesMarkdown);
-    const replacements = {
+    return {
         show_name: show.name || '',
         channel_name: show.channel_name || '',
         start_time: start.toLocaleString('en-US', { timeZone: show.timezone || 'UTC' }),
+        start_time_iso: start.toISOString(),
         time_until: formatTimeUntil(step.offset_minutes),
+        offset_minutes: String(Math.max(0, parseInt(step.offset_minutes, 10) || 0)),
         show_url: buildShowUrl(show),
         notes,
         note: notes,
@@ -75,18 +78,27 @@ function renderMessage(template, show, step, occurrenceAt) {
         note_markdown: notesMarkdown,
         show_notes_markdown: notesMarkdown
     };
+}
 
+function renderTemplate(template, replacements) {
+    let text = String(template || '').trim();
+    Object.keys(replacements).forEach(key => {
+        text = text.replace(new RegExp(`\\{${key}\\}`, 'g'), replacements[key]);
+    });
+    return text;
+}
+
+function renderMessage(template, show, step, occurrenceAt) {
+    const replacements = buildTemplateContext(show, step, occurrenceAt);
     let message = String(template || '').trim();
+
     if (!message) {
         message = step.offset_minutes > 0
             ? '{show_name} starts in {time_until}.\n{show_url}'
             : '{show_name} is starting now.\n{show_url}';
     }
 
-    Object.keys(replacements).forEach(key => {
-        message = message.replace(new RegExp(`\\{${key}\\}`, 'g'), replacements[key]);
-    });
-    return message.substring(0, 4000);
+    return renderTemplate(message, replacements).substring(0, 4000);
 }
 
 function parseShowRow(row) {
@@ -108,7 +120,7 @@ function targetIdSet(step) {
         .filter(id => id));
 }
 
-async function sendToIntegration(integration, message, show) {
+async function sendToIntegration(integration, message, show, step, occurrenceAt) {
     if (integration.provider === 'ntfy') {
         return ntfy.publish(integration, message, {
             title: integration.config && integration.config.title
@@ -119,6 +131,14 @@ async function sendToIntegration(integration, message, show) {
     }
     if (integration.provider === 'discord') {
         return discord.publish(integration, message);
+    }
+    if (integration.provider === 'custom_webhook') {
+        return customWebhook.publish(integration, message, {
+            show,
+            step,
+            occurrenceAt,
+            replacements: buildTemplateContext(show, step, occurrenceAt)
+        });
     }
     throw new Error(`Unsupported notification provider: ${integration.provider}`);
 }
@@ -139,7 +159,7 @@ async function deliverStepTarget({ show, step, integration, occurrenceAt }) {
 
     const message = renderMessage(step.message, show, step, occurrenceAt);
     try {
-        await sendToIntegration(integration, message, show);
+        await sendToIntegration(integration, message, show, step, occurrenceAt);
         await notificationDB.markDeliverySent(delivery.id);
         await notificationDB.updateIntegrationError(integration.id, null);
     } catch (err) {
@@ -232,7 +252,7 @@ async function sendTestNotifications({ channelRow, show, step }) {
         }
 
         try {
-            await sendToIntegration(integration, rendered, testShow);
+            await sendToIntegration(integration, rendered, testShow, normalizedStep, occurrenceAt);
             await notificationDB.updateIntegrationError(integration.id, null);
             sent.push({ id, name: integration.name, provider: integration.provider });
         } catch (err) {
@@ -252,6 +272,7 @@ async function sendTestNotifications({ channelRow, show, step }) {
 
 module.exports = {
     pollAndSendDueNotifications,
+    buildTemplateContext,
     renderMessage,
     sendTestNotifications
 };
