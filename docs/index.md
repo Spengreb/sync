@@ -8,6 +8,7 @@ This user guide is a work in progress rewrite of the old user guide.  If you not
 * [Available user preferences](user-settings.md)
 * [Adding subtitles to Google Drive videos](google-drive-subtitles.md)
 * [Managing chat filters](chat-filters.md)
+* [Show notifications and custom webhooks](show-notifications.md)
 
 ## I need help! ##
 

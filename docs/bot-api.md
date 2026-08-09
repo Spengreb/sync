@@ -413,7 +413,8 @@ This endpoint supports bot Bearer auth. Integration create/update/delete endpoin
 ```json
 [
   { "id": "12", "provider": "discord", "name": "Discord announcements" },
-  { "id": "18", "provider": "ntfy", "name": "ntfy public" }
+  { "id": "18", "provider": "ntfy", "name": "ntfy public" },
+  { "id": "21", "provider": "custom_webhook", "name": "Bot webhook" }
 ]
 ```
 
@@ -494,7 +495,24 @@ Run control action.
 - `notification_plan.steps[].target_ids`: notification target IDs from `GET /channels/:channel/notification-integrations/targets`
 - `status`: one of `draft | scheduled | paused | running | completed | failed | canceled` (`running` is accepted but normalized to `scheduled` on write)
 
-Notification message templates support `{show_name}`, `{channel_name}`, `{start_time}`, `{time_until}`, `{show_url}`, `{notes}`, `{note}`, and `{show_notes}`. `{notes}` preserves image/link URLs for notification clients. `{notes_text}` removes Markdown links and formatting, and `{notes_markdown}` keeps the raw show notes Markdown.
+Notification message templates support `{show_name}`, `{channel_name}`, `{start_time}`, `{start_time_iso}`, `{time_until}`, `{offset_minutes}`, `{show_url}`, `{notes}`, `{note}`, `{show_notes}`, `{notes_text}`, `{note_text}`, `{show_notes_text}`, `{notes_markdown}`, `{note_markdown}`, and `{show_notes_markdown}`. `{notes}` preserves image/link URLs for notification clients. `{notes_text}` removes Markdown links and formatting, and `{notes_markdown}` keeps the raw show notes Markdown.
+
+Custom Webhook targets use the rendered notification message as webhook template data. In a Custom Webhook body or secret header template, `{message}` and `{notification_message}` contain the per-show notification step message after its placeholders are rendered. Custom Webhook templates also support JSON-safe variants for every placeholder by adding `_json`, such as `{show_name_json}`, `{show_url_json}`, and `{notification_message_json}`.
+
+Example Custom Webhook body template:
+
+```json
+{
+  "event": "show_notification",
+  "message": "{notification_message_json}",
+  "show_name": "{show_name_json}",
+  "channel_name": "{channel_name_json}",
+  "starts_at": "{start_time_iso_json}",
+  "offset_minutes": "{offset_minutes_json}",
+  "show_url": "{show_url_json}",
+  "notes": "{notes_text_json}"
+}
+```
 
 #### `POST /channels/:channel/shows/test-notification`
 
