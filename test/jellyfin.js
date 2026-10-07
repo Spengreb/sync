@@ -70,7 +70,7 @@ describe('Jellyfin download links', () => {
         assert.strictEqual(url.origin, 'https://media.example.com');
         assert.strictEqual(url.pathname, '/jellyfin/Items');
         assert.strictEqual(url.searchParams.get('Ids'), itemId);
-        assert.strictEqual(url.searchParams.get('Fields'), 'MediaSources,MediaStreams');
+        assert.strictEqual(url.searchParams.get('Fields'), 'MediaSources,MediaStreams,Path');
         assert(!url.href.includes('test-token'));
         assert.strictEqual(options.headers.Authorization, 'MediaBrowser Token="test-token"');
     });
@@ -155,6 +155,49 @@ describe('Jellyfin download links', () => {
         assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'video/mp4');
         item.MediaSources[1].Container = 'webm';
         assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'video/webm');
+    });
+
+    it('accepts a single source whose ID differs from the item ID', async () => {
+        delete item.Container;
+        item.MediaSources[0].Id = 'b'.repeat(32);
+        assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'video/mp4');
+    });
+
+    it('matches the original file path when there are multiple unrelated source IDs', async () => {
+        delete item.Container;
+        item.Path = '/library/episode.mp4';
+        item.MediaSources = [
+            { Id: 'a'.repeat(32), Path: '/library/alternate.mkv', Container: 'mkv' },
+            { Id: 'b'.repeat(32), Path: item.Path, Container: 'mp4' }
+        ];
+        assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'video/mp4');
+    });
+
+    it('normalizes container aliases and falls back to the original file extension', async () => {
+        item.Container = ' mov,mp4,m4a,3gp,3g2,mj2 ';
+        assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'video/mp4');
+        delete item.Container;
+        item.MediaSources = [];
+        item.Path = '/library/episode.MP4';
+        assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'video/mp4');
+    });
+
+    it('distinguishes missing format metadata from an unsupported format', async () => {
+        delete item.Container;
+        item.MediaSources = [];
+        await assert.rejects(lookup(downloadURL), /did not provide the original file format/);
+        item.Container = 'mkv';
+        item.Path = '/library/misleading.mp4';
+        await assert.rejects(lookup(downloadURL), /unsupported video format \(mkv\)/);
+    });
+
+    it('does not infer the original format from an unrelated alternate source', async () => {
+        delete item.Container;
+        item.MediaSources = [
+            { Id: 'a'.repeat(32), Container: 'mp4' },
+            { Id: 'b'.repeat(32), Container: 'mp4' }
+        ];
+        await assert.rejects(lookup(downloadURL), /did not provide the original file format/);
     });
 
     it('rejects missing or invalid metadata and unsupported original formats', async () => {

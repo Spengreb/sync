@@ -98,7 +98,7 @@ export async function lookup(value) {
     const metadataURL = new URL(url.origin);
     metadataURL.pathname = `${basePath}/Items`;
     metadataURL.searchParams.set('Ids', itemId);
-    metadataURL.searchParams.set('Fields', 'MediaSources,MediaStreams');
+    metadataURL.searchParams.set('Fields', 'MediaSources,MediaStreams,Path');
     metadataURL.searchParams.set('EnableImages', 'false');
     const result = await getMetadata(metadataURL, token);
     const item = result && Array.isArray(result.Items) && result.Items.find(entry =>
@@ -115,19 +115,32 @@ export async function lookup(value) {
     }
 
     // Download serves the original item, not an alternate version or transcode.
-    const source = Array.isArray(item.MediaSources) && item.MediaSources.find(entry =>
+    const sources = Array.isArray(item.MediaSources) ? item.MediaSources.filter(Boolean) : [];
+    const source = sources.find(entry => item.Path && entry.Path === item.Path) || sources.find(entry =>
         entry && typeof entry.Id === 'string' &&
-        entry.Id.replace(/-/g, '').toLowerCase() === itemId.replace(/-/g, '').toLowerCase());
-    const container = String(item.Container || (source && source.Container) || '').toLowerCase();
-    const contentType = {
+        entry.Id.replace(/-/g, '').toLowerCase() === itemId.replace(/-/g, '').toLowerCase()) ||
+        (sources.length === 1 && (!item.Path || !sources[0].Path || sources[0].Path === item.Path)
+            ? sources[0] : null);
+    // Source IDs are not necessarily item IDs. Some responses also omit the
+    // top-level container, or report ffprobe's comma-separated container aliases.
+    const path = item.Path || (source && source.Path) || '';
+    const extension = typeof path === 'string' && path.match(/\.([a-z0-9]+)$/i);
+    const container = String(item.Container || (source && source.Container) ||
+        (extension && extension[1]) || '').trim().toLowerCase();
+    const types = {
         mp4: 'video/mp4',
         m4v: 'video/mp4',
         webm: 'video/webm',
         ogv: 'video/ogg',
         ogg: 'video/ogg'
-    }[container];
+    };
+    const contentType = container.split(',').map(alias => types[alias.trim()]).find(Boolean);
     if (!contentType) {
-        throw new Error('This Jellyfin download is not a supported browser video format. Use an MP4, WebM or Ogg video; download links do not transcode.');
+        if (!container) {
+            throw new Error('Jellyfin did not provide the original file format. Try refreshing this item\'s metadata in Jellyfin.');
+        }
+        const format = /^[a-z0-9, ]{1,80}$/.test(container) ? container : 'unknown';
+        throw new Error(`This Jellyfin download reports an unsupported video format (${format}). Use an MP4, WebM or Ogg video; download links do not transcode.`);
     }
 
     // The same payload as a custom-media manifest, without hosting a JSON file.
