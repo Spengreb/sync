@@ -16,6 +16,7 @@ const TwitchVOD = require("@cytube/mediaquery/lib/provider/twitch-vod");
 const TwitchClip = require("@cytube/mediaquery/lib/provider/twitch-clip");
 import { Counter } from 'prom-client';
 import { lookup as lookupCustomMetadata } from './custom-media';
+import { lookup as lookupJellyfin, parseDownloadURL } from './jellyfin';
 
 const LOGGER = require('@calzoneman/jsli')('get-info');
 const lookupCounter = new Counter({
@@ -347,6 +348,10 @@ var Getters = {
 
     /* ffmpeg for raw files */
     fi: function (id, cb) {
+        if (parseDownloadURL(id)) {
+            lookupJellyfin(id).then(media => cb(null, media), error => cb(error.message));
+            return;
+        }
         ffmpeg.query(id, function (err, data) {
             if (err) {
                 return cb(err);
@@ -389,7 +394,9 @@ var Getters = {
     /* custom media - https://github.com/calzoneman/sync/issues/655 */
     cm: async function (id, callback) {
         try {
-            const media = await lookupCustomMetadata(id);
+            const media = parseDownloadURL(id)
+                ? await lookupJellyfin(id)
+                : await lookupCustomMetadata(id);
             process.nextTick(callback, false, media);
         } catch (error) {
             process.nextTick(callback, error.message);
@@ -441,7 +448,11 @@ module.exports = {
     Getters: Getters,
     getMedia: function (id, type, callback) {
         if(type in this.Getters) {
-            LOGGER.info("Looking up %s:%s", type, id);
+            const download = parseDownloadURL(id);
+            const logId = download
+                ? `${download.url.origin}${download.url.pathname}`
+                : id;
+            LOGGER.info("Looking up %s:%s", type, logId);
             lookupCounter.labels(type).inc(1, new Date());
             this.Getters[type](id, callback);
         } else {
