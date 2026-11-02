@@ -41,13 +41,8 @@ window.loadMediaPlayer = (data) ->
 
 window.handleMediaUpdate = (data) ->
     PLAYER = window.PLAYER
-
-    # Do not update if the current time is past the end of the video, unless
-    # the video has length 0 (which is a special case for livestreams)
-    if typeof PLAYER.mediaLength is 'number' and
-            PLAYER.mediaLength > 0 and
-            data.currentTime > PLAYER.mediaLength
-        return
+    return unless PLAYER
+    PLAYER.latestUpdate = data
 
     # Negative currentTime indicates a lead-in for clients to load the video,
     # but not play it yet (helps with initial buffering)
@@ -59,6 +54,15 @@ window.handleMediaUpdate = (data) ->
             data.currentTime = 0
         PLAYER.load(data)
         PLAYER.play()
+
+    # Keep receiving room state, but leave a failed player alone until the next
+    # item (or an explicit player reload) creates a fresh playback attempt.
+    return if PLAYER.playbackFailed
+
+    if typeof PLAYER.mediaLength is 'number' and
+            PLAYER.mediaLength > 0 and
+            data.currentTime > PLAYER.mediaLength
+        return
 
     if waiting
         PLAYER.seekTo(0)

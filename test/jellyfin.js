@@ -100,6 +100,16 @@ describe('Jellyfin download links', () => {
         sinon.assert.notCalled(get);
     });
 
+    it('preserves probed raw-file MIME metadata in the saved playback source', async () => {
+        sandbox.stub(ffmpeg, 'query').callsFake((_id, callback) => callback(null, {
+            title: 'Movie', duration: 60, codec: 'matroska/vp9', contentType: 'video/x-matroska'
+        }));
+        const url = 'https://example.com/movie.mkv';
+        const media = await getMedia(url, 'fi');
+        assert.strictEqual(media.pack().meta.direct.auto[0].contentType, 'video/x-matroska');
+        assert.strictEqual(media.pack().meta.direct.auto[0].link, url);
+    });
+
     it('supports a root URL, dashed item IDs and alternative token spellings', async () => {
         const dashed = '01234567-89ab-cdef-0123-456789abcdef';
         for (const key of ['api_key', 'apikey', 'access_token']) {
@@ -182,13 +192,13 @@ describe('Jellyfin download links', () => {
         assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'video/mp4');
     });
 
-    it('distinguishes missing format metadata from an unsupported format', async () => {
+    it('lets the browser inspect downloads with missing format metadata', async () => {
         delete item.Container;
         item.MediaSources = [];
-        await assert.rejects(lookup(downloadURL), /did not provide the original file format/);
+        assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'application/octet-stream');
         item.Container = 'mkv';
         item.Path = '/library/misleading.mp4';
-        await assert.rejects(lookup(downloadURL), /unsupported video format \(mkv\)/);
+        assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'video/x-matroska');
     });
 
     it('does not infer the original format from an unrelated alternate source', async () => {
@@ -197,18 +207,28 @@ describe('Jellyfin download links', () => {
             { Id: 'a'.repeat(32), Container: 'mp4' },
             { Id: 'b'.repeat(32), Container: 'mp4' }
         ];
-        await assert.rejects(lookup(downloadURL), /did not provide the original file format/);
+        assert.strictEqual((await lookup(downloadURL)).meta.direct.auto[0].contentType, 'application/octet-stream');
     });
 
-    it('rejects missing or invalid metadata and unsupported original formats', async () => {
+    it('accepts MKV and unfamiliar containers without transcoding or changing the download URL', async () => {
+        for (const container of ['mkv', 'avi', 'future-container', 'constructor']) {
+            item.Container = container;
+            const media = await lookup(downloadURL);
+            assert.strictEqual(media.id, downloadURL);
+            assert.strictEqual(media.meta.direct.auto[0].link, downloadURL);
+            assert.strictEqual(media.title, item.Name);
+        }
+    });
+
+    it('rejects missing or invalid item metadata', async () => {
         respond(() => JSON.stringify({ Items: [] }));
         await assert.rejects(lookup(downloadURL), /not found or is not accessible/);
         respond(() => JSON.stringify({ Items: [item] }));
         item.RunTimeTicks = null;
         await assert.rejects(lookup(downloadURL), /valid video duration/);
         item.RunTimeTicks = 13248200000;
-        item.Container = 'mkv';
-        await assert.rejects(lookup(downloadURL), /download links do not transcode/);
+        item.Name = ' ';
+        await assert.rejects(lookup(downloadURL), /video title/);
     });
 
     it('reports authorization failures without echoing the token or response body', async () => {

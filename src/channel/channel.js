@@ -450,7 +450,7 @@ Channel.prototype.acceptUser = function (user) {
 
     // Managing this from here is not great, but due to the sequencing involved
     // and the limitations of the existing design, it'll have to do.
-    if (this.modules.playlist.leader !== null) {
+    if (this.modules.playlist.leader !== null && !this.modules.playlist._leaderPlaybackFailed) {
         user.socket.emit("setLeader", this.modules.playlist.leader.getName());
     }
 

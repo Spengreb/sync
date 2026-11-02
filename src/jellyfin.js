@@ -1,6 +1,7 @@
 import https from 'https';
 import { URL } from 'url';
 import Media from './media';
+import { mediaContentType } from './util/media-content-type';
 
 const DOWNLOAD_PATH = /^(.*)\/Items\/([a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\/Download\/?$/i;
 const MAX_METADATA_BYTES = 1024 * 1024;
@@ -127,21 +128,7 @@ export async function lookup(value) {
     const extension = typeof path === 'string' && path.match(/\.([a-z0-9]+)$/i);
     const container = String(item.Container || (source && source.Container) ||
         (extension && extension[1]) || '').trim().toLowerCase();
-    const types = {
-        mp4: 'video/mp4',
-        m4v: 'video/mp4',
-        webm: 'video/webm',
-        ogv: 'video/ogg',
-        ogg: 'video/ogg'
-    };
-    const contentType = container.split(',').map(alias => types[alias.trim()]).find(Boolean);
-    if (!contentType) {
-        if (!container) {
-            throw new Error('Jellyfin did not provide the original file format. Try refreshing this item\'s metadata in Jellyfin.');
-        }
-        const format = /^[a-z0-9, ]{1,80}$/.test(container) ? container : 'unknown';
-        throw new Error(`This Jellyfin download reports an unsupported video format (${format}). Use an MP4, WebM or Ogg video; download links do not transcode.`);
-    }
+    const contentType = mediaContentType(container, path);
 
     // The same payload as a custom-media manifest, without hosting a JSON file.
     // Preserve the original URL (including its token) for browser playback.

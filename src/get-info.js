@@ -359,7 +359,10 @@ var Getters = {
 
             var m = new Media(id, data.title, data.duration, "fi", {
                 bitrate: data.bitrate,
-                codec: data.codec
+                codec: data.codec,
+                direct: data.contentType ? {
+                    auto: [{ link: id, contentType: data.contentType }]
+                } : undefined
             });
             cb(null, m);
         });

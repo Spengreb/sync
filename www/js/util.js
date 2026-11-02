@@ -1482,15 +1482,19 @@ function parseMediaLink(url) {
 
 
 function sendVideoUpdate() {
-    if (!CLIENT.leader) {
+    if (!CLIENT.leader || !PLAYER || PLAYER.playbackFailed) {
         return;
     }
-    PLAYER.getTime(function (seconds) {
+    var player = PLAYER;
+    player.getTime(function (seconds) {
+        if (player !== PLAYER || player.playbackFailed) {
+            return;
+        }
         socket.emit("mediaUpdate", {
-            id: PLAYER.mediaId,
+            id: player.mediaId,
             currentTime: seconds,
-            paused: PLAYER.paused,
-            type: PLAYER.mediaType
+            paused: player.paused,
+            type: player.mediaType
         });
     });
 }

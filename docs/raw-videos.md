@@ -22,33 +22,26 @@ video yourself on a VPS or dedicated server with plenty of bandwidth.
 Note that CyTube only queries the file for metadata, it does not proxy it for
 users!  Every user watching the video will be downloading it individually.
 
+Playlist titles use the file's embedded title when available, otherwise the
+filename from the URL. Query parameters are not included in the title.
+
 ## Encoding the Video ##
 
-Current internet browsers are very limited in what codecs they can play
-natively.  Accordingly, CyTube only supports a few codecs:
+Sync accepts any audio/video format that its ffprobe installation can identify.
+There is no server codec allowlist. This includes MKV, HEVC and VP9 in MP4;
+accepting a file does not guarantee that every viewer's browser can play it.
+Downloads served as `application/octet-stream` are also probed normally.
 
-**Video**
+Each browser attempts the original file. If all available sources fail, that
+viewer sees a warning and playback sync is suspended for that video. Chat and
+room updates continue, and the next playlist item gets a fresh playback attempt.
+If the assigned playback leader fails, the server runs the timeline for that
+item and restores the assigned leader on the next video.
 
-  * MP4 (AV1)
-  * MP4 (H.264)
-  * WebM (AV1)
-  * WebM (VP8)
-  * WebM (VP9)
-  * Ogg/Theora
-
-**Audio**
-
-  * MP3
-  * Ogg/Vorbis
-
-If your video is in some other format (such as MKV or AVI), then it will need to
-be re-encoded.  There are plenty of free programs available to re-encode video
-files, such as [ffmpeg](http://ffmpeg.org/) and
-[handbrake](http://handbrake.fr/).
-
-For best results, encode as an MP4 using H.264.  This is natively supported by
-many browsers, and can also be played using a fallback flash player for older
-browsers that don't support it natively.  Always encode with the
+Loading failures can also come from networking, authentication or hotlink
+blocking; a failure is not automatically proof of an unsupported codec. Sync
+does not transcode files. For broad compatibility, MP4 with H.264 video and AAC
+audio remains a useful choice. If preparing MP4 files, use the
 [faststart](https://trac.ffmpeg.org/wiki/Encode/H.264#faststartforwebvideo)
 flag.
 

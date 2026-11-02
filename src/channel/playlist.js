@@ -51,6 +51,13 @@ const TYPE_MEDIA_UPDATE = {
     type: "string,optional"
 };
 
+const TYPE_MEDIA_PLAYBACK_ERROR = {
+    uid: "number",
+    playbackId: "number",
+    id: "string",
+    type: "string"
+};
+
 const TYPE_CLONE_PLAYLIST = {
     name: "string"
 };
@@ -97,6 +104,8 @@ function PlaylistModule(_channel) {
     this.semaphore = new AsyncQueue();
 
     this.leader = null;
+    this._leaderPlaybackFailed = false;
+    this._playbackId = 0;
     this._leadInterval = false;
     this._lastUpdate = 0;
     this._counter = 0;
@@ -257,7 +266,7 @@ PlaylistModule.prototype.packInfo = function (data, isAdmin) {
     }
 
     if (isAdmin) {
-        if (this.leader) {
+        if (this.leader && !this._leaderPlaybackFailed) {
             data.leader = this.leader.getName();
         } else {
             data.leader = "[server]";
@@ -276,6 +285,8 @@ PlaylistModule.prototype.onUserPostJoin = function (user) {
     user.socket.on("playNext", this.handlePlayNext.bind(this, user));
     user.socket.typecheckedOn("assignLeader", TYPE_ASSIGN_LEADER, this.handleAssignLeader.bind(this, user));
     user.socket.typecheckedOn("mediaUpdate", TYPE_MEDIA_UPDATE, this.handleUpdate.bind(this, user));
+    user.socket.typecheckedOn("mediaPlaybackError", TYPE_MEDIA_PLAYBACK_ERROR,
+            this.handlePlaybackError.bind(this, user));
     var self = this;
     user.socket.on("playerReady", function () {
         self.sendChangeMedia([user]);
@@ -353,6 +364,7 @@ PlaylistModule.prototype.sendChangeMedia = function (users) {
     }
 
     var update = this.current.media.getFullUpdate();
+    update.playbackId = this._playbackId;
     var uid = this.current.uid;
     if (users === this.channel.users) {
         this.channel.broadcastAll("setCurrent", uid);
@@ -792,6 +804,7 @@ PlaylistModule.prototype.handleAssignLeader = function (user, data) {
     }
 
     var name = data.name;
+    this._leaderPlaybackFailed = false;
 
     if (this.leader) {
         var old = this.leader;
@@ -851,7 +864,7 @@ PlaylistModule.prototype.handleAssignLeader = function (user, data) {
 };
 
 PlaylistModule.prototype.handleUpdate = function (user, data) {
-    if (this.leader !== user) {
+    if (this.leader !== user || this._leaderPlaybackFailed) {
         return;
     }
 
@@ -874,6 +887,22 @@ PlaylistModule.prototype.handleUpdate = function (user, data) {
     this._positionDirty = true;
 
     this.channel.broadcastAll("mediaUpdate", update);
+};
+
+PlaylistModule.prototype.handlePlaybackError = function (user, data) {
+    if (this.leader !== user || this._leaderPlaybackFailed || !this.current) {
+        return;
+    }
+    const media = this.current.media;
+    // A delayed error from an old player must not take over the next item.
+    if (data.uid !== this.current.uid || data.playbackId !== this._playbackId ||
+            data.id !== media.id || data.type !== media.type) {
+        return;
+    }
+    this._leaderPlaybackFailed = true;
+    // Retain the assigned leader's role, but let the server run this item.
+    // startPlayback restores that leader for the next video.
+    this.resumeAutolead();
 };
 
 /**
@@ -1076,6 +1105,13 @@ PlaylistModule.prototype.startPlayback = function (time) {
     media.reset();
     self._positionDirty = true;
 
+    const restoreLeader = self._leaderPlaybackFailed && self.leader;
+    self._leaderPlaybackFailed = false;
+    self._playbackId++;
+    if (self._leadInterval) {
+        clearInterval(self._leadInterval);
+        self._leadInterval = false;
+    }
     if (self.leader != null) {
         media.paused = false;
         media.currentTime = time || 0;
@@ -1091,6 +1127,9 @@ PlaylistModule.prototype.startPlayback = function (time) {
                 }
 
                 self.sendChangeMedia(self.channel.users);
+                if (restoreLeader && self.leader === restoreLeader) {
+                    self.channel.broadcastAll("setLeader", self.leader.getName());
+                }
                 self.channel.notifyModules("onMediaChange", [self.current.media]);
             }
         );
@@ -1101,12 +1140,6 @@ PlaylistModule.prototype.startPlayback = function (time) {
     time = time || (media.seconds > 0 ? -3 : 0);
     media.paused = time < 0;
     media.currentTime = time;
-
-    /* Module was already leading, stop the previous timer */
-    if (self._leadInterval) {
-        clearInterval(self._leadInterval);
-        self._leadInterval = false;
-    }
 
     self.channel.checkModules("onPreMediaChange", [self.current.media],
         function () {

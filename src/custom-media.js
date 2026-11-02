@@ -4,6 +4,7 @@ import net from 'net';
 import Media from './media';
 import { get as httpGet } from 'http';
 import { get as httpsGet } from 'https';
+import { isMediaContentType } from './util/media-content-type';
 
 const LOGGER = require('@calzoneman/jsli')('custom-media');
 
@@ -18,26 +19,16 @@ const SOURCE_QUALITIES = new Set([
     2160
 ]);
 
-const SOURCE_CONTENT_TYPES = new Set([
+const STREAM_CONTENT_TYPES = new Set([
     'application/dash+xml',
     'application/x-mpegURL',
-    'audio/aac',
-    'audio/mp4',
-    'audio/mpeg',
-    'audio/ogg',
-    'audio/opus',
-    'video/mp4',
-    'video/ogg',
-    'video/webm'
+    'application/vnd.apple.mpegurl',
+    'application/octet-stream'
 ]);
 
-const AUDIO_ONLY_CONTENT_TYPES = new Set([
-    'audio/aac',
-    'audio/mp4',
-    'audio/mpeg',
-    'audio/ogg',
-    'audio/opus'
-]);
+function isAudioContentType(value) {
+    return isMediaContentType(value) && /^audio\//i.test(value);
+}
 
 export function lookup(url, opts) {
     if (!opts) opts = {};
@@ -193,13 +184,13 @@ function validateSources(sources) {
             throw new ValidationError('source URL must be a string');
         validateURL(source.url);
 
-        if (!SOURCE_CONTENT_TYPES.has(source.contentType))
+        if (!isMediaContentType(source.contentType) && !STREAM_CONTENT_TYPES.has(source.contentType))
             throw new ValidationError(
                 `unacceptable source contentType "${source.contentType}"`
             );
 
         // TODO (Xaekai): This should be allowed
-        if (/*!AUDIO_ONLY_CONTENT_TYPES.has(source.contentType) && */!SOURCE_QUALITIES.has(source.quality))
+        if (!SOURCE_QUALITIES.has(source.quality))
             throw new ValidationError(`unacceptable source quality "${source.quality}"`);
 
         if (source.hasOwnProperty('bitrate')) {
@@ -228,7 +219,7 @@ function validateAudioTracks(audioTracks) {
         }
         validateURL(track.url);
 
-        if (!AUDIO_ONLY_CONTENT_TYPES.has(track.contentType)){
+        if (!isAudioContentType(track.contentType)){
             throw new ValidationError(
                 `unacceptable audio track contentType "${track.contentType}"`
             );

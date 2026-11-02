@@ -128,6 +128,10 @@
             return true;
           }
         });
+        if (!src.length) {
+          player.error({code: 4});
+          return player;
+        }
         //Sort sources
         this.currentSources = src.sort(compareResolutions);
         this.groupedSrc = bucketSources(this.currentSources);
