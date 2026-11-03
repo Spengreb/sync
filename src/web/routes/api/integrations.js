@@ -94,7 +94,7 @@ function shouldRetryGoogleError(err) {
 
 async function withGoogleBackoff(op, maxRetries = 4) {
     let attempt = 0;
-    while (true) {
+    for (;;) {
         try {
             return await op();
         } catch (err) {
@@ -141,7 +141,7 @@ async function refreshGoogleEventIndex({ integration, calendarId, accessToken })
     let pageToken = null;
     let nextSyncToken = syncToken;
 
-    while (true) {
+    for (;;) {
         let resp;
         try {
             resp = await withGoogleBackoff(() =>
