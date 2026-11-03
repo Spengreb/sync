@@ -600,6 +600,9 @@ const Callbacks = {
             if(LEADTMR)
                 clearInterval(LEADTMR);
             LEADTMR = setInterval(sendVideoUpdate, 5000);
+            if (PLAYER && PLAYER.playbackFailed && PLAYER.reportPlaybackFailure) {
+                PLAYER.reportPlaybackFailure();
+            }
             handlePermissionChange();
         } else if (CLIENT.leader) {
             CLIENT.leader = false;
@@ -807,6 +810,10 @@ const Callbacks = {
         function loadNext() {
             if (!PLAYER || data.type !== PLAYER.mediaType) {
                 loadMediaPlayer(data);
+            } else if (PLAYER instanceof VideoJSPlayer &&
+                    (PLAYER.playbackFailed || PLAYER.playbackId !== data.playbackId)) {
+                PLAYER.load(data);
+                handleMediaUpdate(data);
             } else {
                 handleMediaUpdate(data);
             }

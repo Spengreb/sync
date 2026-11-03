@@ -73,7 +73,8 @@ Each source entry is a JSON object with the following keys:
   * `url`: A valid URL that browsers can use to retrieve the content.  The URL
     must resolve to a publicly-routed IP address, and must the `https:` scheme.
   * `contentType`: A string representing the MIME type of the content at `url`.
-    A list of acceptable MIME types is provided below.
+    Audio and video MIME types are accepted without a format allowlist; playback
+    support is determined by each viewer's browser.
   * `quality`: A number representing the quality level of the source.  The
     supported quality levels are `240`, `360`, `480`, `540`, `720`, `1080`,
     `1440`, and `2160`.  This may be extended in the future.
@@ -85,11 +86,14 @@ Each source entry is a JSON object with the following keys:
 
 #### Acceptable MIME Types ####
 
-The following MIME types are accepted for the `contentType` field:
+Any `audio/*` or `video/*` MIME type is accepted, including codec parameters.
+`application/octet-stream` is accepted when the browser needs to inspect the
+original response. The following are examples and supported streaming types:
 
   * `video/mp4`
   * `video/webm`
   * `video/ogg`
+  * `video/x-matroska`
   * `application/x-mpegURL` (HLS streams)
     - HLS is only tested with livestreams.  VODs are accepted, but I do not test
       this functionality.
@@ -104,11 +108,14 @@ The following MIME types are accepted for the `contentType` field:
   * `audio/mp4`
   * `audio/mpeg`
   * `audio/ogg`
+  * `audio/flac`
+  * `application/octet-stream`
 
-Other audio or video formats, such as AVI, MKV, and FLAC, are not supported due
-to lack of common support across browsers for playing these formats.  For more
-information, refer to
-[MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Supported_media_formats#Browser_compatibility).
+Accepting a format does not guarantee playback on every device. Direct files
+are attempted even when a MIME capability check is inconclusive or negative.
+If every source fails for a viewer, a local warning explains the failure and
+playback sync is suspended until the next video. HLS and DASH retain their
+existing streaming handlers.
 
 ### Audio Track Format ###
 

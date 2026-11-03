@@ -22,13 +22,16 @@ Requirements:
 
 - A valid HTTPS certificate and a server reachable by Sync and every viewer.
 - A token allowed to read metadata and download the item.
-- An original MP4, WebM or Ogg video with codecs supported by viewers' browsers.
-  Download URLs serve the original file; they do not negotiate transcoding.
+- An original video that the viewer's browser can play, including MKV where
+  supported. Download URLs serve the original file; they do not negotiate
+  transcoding. Sync does not reject downloads based on their container or codecs.
 - The channel's existing permission to add raw video files.
 
 This handles authenticated file downloads. Jellyfin web-page URLs, transcoding
 sessions, library browsing, login and automatic subtitle extraction are not
 included. Playback controls and synchronization use the existing room behavior.
+If a viewer cannot load or decode the file, they see a local playback warning
+and automatically try again on the next playlist item. Other viewers continue.
 
 The token remains in the shared playback URL and saved playlist/library entries,
 just as with a custom-media manifest. Anyone who can read those entries can use

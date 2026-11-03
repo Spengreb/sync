@@ -7,6 +7,7 @@ var urlparse = require("url");
 var path = require("path");
 
 import { callOnce } from './util/call-once';
+import { mediaContentType, isMediaContentType } from './util/media-content-type';
 
 const CYTUBE_VERSION = require('../package.json').version;
 
@@ -74,27 +75,6 @@ const ECODE_MESSAGES = {
 
 var USE_JSON = true;
 var TIMEOUT = 30000;
-
-var acceptedCodecs = {
-    "mov/h264": true,
-    "flv/h264": true,
-    "matroska/vp8": true,
-    "matroska/vp9": true,
-    "ogg/theora": true,
-    "mov/av1": true,
-    "matroska/av1": true
-};
-
-var acceptedAudioCodecs = {
-    "mp3": true,
-    "vorbis": true,
-    "aac": true,
-    "opus": true
-};
-
-var audioOnlyContainers = {
-    "mp3": true
-};
 
 function fflog() { }
 
@@ -211,14 +191,9 @@ function testUrl(url, cb, params = { redirCount: 0, cookie: '' }) {
                 return cb(translateStatusCode(res.statusCode));
             }
 
-            if (!/^audio|^video/.test(res.headers["content-type"])) {
-                cb("Could not detect a supported audio/video type.  See " +
-                   "https://git.io/fjtOK for a list of supported providers.  " +
-                   "(Content-Type was: '" + res.headers["content-type"] + "')");
-                return;
-            }
-
-            cb();
+            // A download may be served as application/octet-stream. ffprobe
+            // determines whether it contains media; the browser decides playback.
+            cb(null, res.headers['content-type']);
         });
 
         req.on("error", function (err) {
@@ -286,17 +261,7 @@ function readOldFormat(buf) {
 }
 
 function isAlternateDisposition(stream) {
-    if (!stream.disposition) {
-        return false;
-    }
-
-    for (var key in stream) {
-        if (key !== "default" && stream.disposition[key]) {
-            return true;
-        }
-    }
-
-    return false;
+    return !!(stream.disposition && stream.disposition.attached_pic);
 }
 
 function reformatData(data) {
@@ -312,8 +277,8 @@ function reformatData(data) {
 
     reformatted.title = data.format.tags ? data.format.tags.title : null;
     var container = data.format.format_name.split(",")[0];
+    reformatted.container = data.format.format_name;
 
-    var isVideo = false;
     var audio = null;
     for (var i = 0; i < data.streams.length; i++) {
         const stream = data.streams[i];
@@ -324,22 +289,17 @@ function reformatData(data) {
             continue;
         }
 
-        if (stream.codec_type === "video" &&
-                !audioOnlyContainers.hasOwnProperty(container)) {
-            isVideo = true;
-            if (acceptedCodecs.hasOwnProperty(container + "/" + stream.codec_name)) {
-                reformatted.vcodec = stream.codec_name;
-                reformatted.medium = "video";
-                reformatted.type = [container, reformatted.vcodec].join("/");
+        if (stream.codec_type === "video") {
+            reformatted.vcodec = stream.codec_name;
+            reformatted.medium = "video";
+            reformatted.type = [container, reformatted.vcodec].join("/");
 
-                if (stream.tags && stream.tags.title) {
-                    reformatted.title = stream.tags.title;
-                }
-
-                return reformatted;
+            if (stream.tags && stream.tags.title) {
+                reformatted.title = stream.tags.title;
             }
-        } else if (stream.codec_type === "audio" && !audio &&
-                acceptedAudioCodecs.hasOwnProperty(stream.codec_name)) {
+
+            return reformatted;
+        } else if (stream.codec_type === "audio" && !audio) {
             audio = {
                 acodec: stream.codec_name,
                 medium: "audio"
@@ -349,12 +309,6 @@ function reformatData(data) {
                 audio.title = stream.tags.title;
             }
         }
-    }
-
-    // Override to make sure video files with no valid video streams but some
-    // acceptable audio stream are rejected.
-    if (isVideo) {
-        return reformatted;
     }
 
     if (audio) {
@@ -447,6 +401,16 @@ exports.ffprobe = function ffprobe(filename, cb) {
     });
 };
 
+function getFilenameTitle(filename) {
+    const pathname = urlparse.parse(filename).pathname || "";
+    const basename = pathname.substring(pathname.lastIndexOf("/") + 1);
+    try {
+        return decodeURIComponent(basename);
+    } catch (_error) {
+        return basename;
+    }
+}
+
 exports.query = function (filename, cb) {
     if (Config.get("ffmpeg.log") && !fflog.initialized) {
         initFFLog();
@@ -461,7 +425,7 @@ exports.query = function (filename, cb) {
                   "Ensure that the link begins with 'https://'.");
     }
 
-    testUrl(filename, callOnce(function (err) {
+    testUrl(filename, callOnce(function (err, httpContentType) {
         if (err) {
             return cb(err);
         }
@@ -509,27 +473,33 @@ exports.query = function (filename, cb) {
                           "assistance.");
             }
 
+            const title = (typeof data.title === "string" && data.title.trim()) ||
+                getFilenameTitle(filename);
+            const contentType = isMediaContentType(httpContentType) ? httpContentType :
+                mediaContentType(data.container, filename, data.medium);
+
             if (data.medium === "video") {
                 data = {
-                    title: data.title || "Raw Video",
+                    title: title || "Raw Video",
                     duration: data.duration,
                     bitrate: data.bitrate,
-                    codec: data.type
+                    codec: data.type,
+                    contentType
                 };
 
                 cb(null, data);
             } else if (data.medium === "audio") {
                 data = {
-                    title: data.title || "Raw Audio",
+                    title: title || "Raw Audio",
                     duration: data.duration,
                     bitrate: data.bitrate,
-                    codec: data.acodec
+                    codec: data.acodec,
+                    contentType
                 };
 
                 cb(null, data);
             } else {
-                return cb("File did not contain an acceptable codec.  See " +
-                          "https://git.io/vrE75 for details.");
+                return cb("File did not contain an audio or video stream.");
             }
         });
     }));

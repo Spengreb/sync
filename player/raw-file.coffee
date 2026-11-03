@@ -1,21 +1,23 @@
 codecToMimeType = (codec) ->
-    switch codec
-        when 'mov/h264', 'mov/av1' then 'video/mp4'
-        when 'flv/h264' then 'video/flv'
-        when 'matroska/vp8', 'matroska/vp9', 'matroska/av1' then 'video/webm'
-        when 'ogg/theora' then 'video/ogg'
-        when 'mp3' then 'audio/mp3'
-        when 'vorbis' then 'audio/ogg'
+    # Compatibility with saved raw entries that predate explicit MIME metadata.
+    [container, encoding] = String(codec ? '').split('/')
+    switch container
+        when 'mov' then 'video/mp4'
+        when 'flv' then 'video/x-flv'
+        when 'matroska'
+            if encoding in ['vp8', 'vp9', 'av1'] then 'video/webm' else 'video/x-matroska'
+        when 'ogg' then 'video/ogg'
+        when 'mp3' then 'audio/mpeg'
+        when 'vorbis', 'opus' then 'audio/ogg'
         when 'aac' then 'audio/aac'
-        when 'opus' then 'audio/opus'
-        else 'video/flv'
+        else 'application/octet-stream'
 
 window.FilePlayer = class FilePlayer extends VideoJSPlayer
     constructor: (data) ->
         if not (this instanceof FilePlayer)
             return new FilePlayer(data)
 
-        data.meta.direct =
+        data.meta.direct ?=
             480: [{
                 contentType: codecToMimeType(data.meta.codec)
                 link: data.id
@@ -23,7 +25,7 @@ window.FilePlayer = class FilePlayer extends VideoJSPlayer
         super(data)
 
     load: (data) ->
-        data.meta.direct =
+        data.meta.direct ?=
             480: [{
                 contentType: codecToMimeType(data.meta.codec)
                 link: data.id

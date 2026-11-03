@@ -50,6 +50,26 @@ hasAnyAudioTracks = (data) ->
     ntracks = data?.meta?.audioTracks?.length ? 0
     return ntracks > 0
 
+isAdaptiveMediaType = (type) ->
+    String(type ? '').split(';')[0].trim().toLowerCase() in [
+        'application/dash+xml', 'application/x-mpegurl',
+        'application/vnd.apple.mpegurl', 'audio/mpegurl', 'audio/x-mpegurl'
+    ]
+
+registerNativeFileSourceHandler = ->
+    html5 = videojs.getTech('Html5')
+    return if html5.syncFileSourceHandler
+    # canPlayType() can reject a MIME hint even when the URL plays directly.
+    # Append a native fallback after the existing HLS/DASH/native handlers.
+    html5.syncFileSourceHandler =
+        canPlayType: (type) ->
+            if isAdaptiveMediaType(type) then '' else 'maybe'
+        canHandleSource: (source) ->
+            if isAdaptiveMediaType(source.type) then '' else 'maybe'
+        handleSource: html5.nativeSourceHandler.handleSource
+        dispose: ->
+    html5.registerSourceHandler(html5.syncFileSourceHandler)
+
 window.VideoJSPlayer = class VideoJSPlayer extends Player
     constructor: (data) ->
         if not (this instanceof VideoJSPlayer)
@@ -58,7 +78,10 @@ window.VideoJSPlayer = class VideoJSPlayer extends Player
         @load(data)
 
     loadPlayer: (data) ->
+        loadToken = @loadToken
         waitUntilDefined(window, 'videojs', =>
+            return unless loadToken is @loadToken
+            registerNativeFileSourceHandler()
             attrs =
                 width: '100%'
                 height: '100%'
@@ -129,41 +152,51 @@ window.VideoJSPlayer = class VideoJSPlayer extends Player
 
             )
             @player.ready(=>
+                return unless loadToken is @loadToken
                 # Have to use updateSrc instead of <source> tags
                 # see: https://github.com/videojs/video.js/issues/3428
                 @player.poster(data.meta.thumbnail)
-                @player.updateSrc(@sources)
                 @player.on('error', =>
+                    return unless loadToken is @loadToken
                     err = @player.error()
-                    if err and err.code == 4
+                    if err and err.code in [2, 3, 4]
                         console.error('Caught error, trying next source')
                         # Does this really need to be done manually?
                         @sourceIdx++
                         if @sourceIdx < @sources.length
+                            @player.error(null)
                             @player.src(@sources[@sourceIdx])
                         else
-                            console.error('Out of sources, video will not play')
+                            @showPlaybackFailure(err.code)
                             if @mediaType is 'gd'
                                 if not window.hasDriveUserscript
                                     window.promptToInstallDriveUserscript()
                                 else
                                     window.tellUserNotToContactMeAboutThingsThatAreNotSupported()
                 )
+                @player.on('loadeddata', =>
+                    return unless loadToken is @loadToken
+                    @playbackFailed = false
+                    $('#media-playback-warning').remove()
+                    if @latestUpdate and not CLIENT.leader
+                        handleMediaUpdate(@latestUpdate)
+                )
+                @player.updateSrc(@sources)
                 @setVolume(VOLUME)
-                @player.on('ended', ->
-                    if CLIENT.leader
+                @player.on('ended', =>
+                    if loadToken is @loadToken and CLIENT.leader and not @playbackFailed
                         socket.emit('playNext')
                 )
 
                 @player.on('pause', =>
                     @paused = true
-                    if CLIENT.leader
+                    if loadToken is @loadToken and CLIENT.leader and not @playbackFailed
                         sendVideoUpdate()
                 )
 
                 @player.on('play', =>
                     @paused = false
-                    if CLIENT.leader
+                    if loadToken is @loadToken and CLIENT.leader and not @playbackFailed
                         sendVideoUpdate()
                 )
 
@@ -192,13 +225,41 @@ window.VideoJSPlayer = class VideoJSPlayer extends Player
         )
 
     load: (data) ->
-        @setMediaProperties(data)
         # Note: VideoJS does have facilities for loading new videos into the
         # existing player object, however it appears to be pretty glitchy when
         # a video can't be played (either previous or next video).  It's safer
         # to just reset the entire thing.
         @destroy()
+        @loadToken = {}
+        @setMediaProperties(data)
+        @playlistUid = PL_CURRENT
+        @playbackId = data.playbackId
+        @playbackFailed = false
+        @latestUpdate = data
         @loadPlayer(data)
+
+    reportPlaybackFailure: ->
+        socket.emit('mediaPlaybackError',
+            uid: @playlistUid
+            playbackId: @playbackId
+            id: @mediaId
+            type: @mediaType
+        )
+
+    showPlaybackFailure: (code) ->
+        return if @playbackFailed
+        @playbackFailed = true
+        @player.pause()
+        message = switch code
+            when 2 then 'The media could not be downloaded. The server or network may be unavailable.'
+            when 3 then 'Your browser could not decode this media. The codec may be unsupported or the file may be damaged.'
+            else 'Your browser could not load this media. The format may be unsupported, or the host may have blocked the request.'
+        message += ' Playback sync is paused for this video. You will automatically rejoin on the next video. Other viewers can keep watching.'
+        $('#media-playback-warning').remove()
+        makeAlert('Playback unavailable', message, 'alert-warning', true)
+            .attr('id', 'media-playback-warning')
+            .insertAfter($('#videowrap-header'))
+        @reportPlaybackFailure()
 
     play: ->
         @paused = false
@@ -234,6 +295,10 @@ window.VideoJSPlayer = class VideoJSPlayer extends Player
             cb(VOLUME)
 
     destroy: ->
+        @loadToken = null
+        $('#media-playback-warning').remove()
         removeOld()
         if @player
-            @player.dispose()
+            player = @player
+            @player = null
+            player.dispose()

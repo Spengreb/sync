@@ -123,6 +123,21 @@ describe('custom-media', () => {
             assert.throws(() => validate(invalid), /unacceptable source contentType/);
         });
 
+        it('accepts media MIME types without a format allowlist', () => {
+            for (const type of ['video/x-matroska', 'audio/flac', 'video/future-format',
+                'video/mp4; codecs="hvc1,mp4a.40.2"', 'application/octet-stream']) {
+                valid.sources[0].contentType = type;
+                validate(valid);
+            }
+        });
+
+        it('still rejects malformed and non-media MIME types', () => {
+            for (const type of [null, 42, 'video/', 'text/html', 'video/mp4\n', 'video/mp4\r\nBad: header']) {
+                invalid.sources[0].contentType = type;
+                assert.throws(() => validate(invalid), /unacceptable source contentType/);
+            }
+        });
+
         it('rejects unacceptable source quality', () => {
             invalid.sources[0].quality = 144;
 
