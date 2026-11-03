@@ -348,11 +348,20 @@ Returns current channel options.
 
 **Available keys:**
 
-`allow_voteskip`, `allow_dupes`, `voteskip_ratio`, `maxlength`, `playlist_max_duration_per_user`, `afk_timeout`, `enable_link_regex`, `chat_antiflood`, `chat_antiflood_burst`, `chat_antiflood_sustained`, `new_user_chat_delay`, `new_user_chat_link_delay`, `pagetitle`, `password`, `externalcss`, `externaljs`, `show_public`, `torbanned`, `block_anonymous_users`, `allow_ascii_control`, `playlist_max_per_user`
+`allow_voteskip`, `allow_dupes`, `voteskip_ratio`, `maxlength`, `playlist_max_duration_per_user`, `afk_timeout`, `enable_link_regex`, `chat_antiflood`, `chat_antiflood_params`, `chat_antiflood_burst`, `chat_antiflood_sustained`, `new_user_chat_delay`, `new_user_chat_link_delay`, `pagetitle`, `password`, `externalcss`, `externaljs`, `show_public`, `torbanned`, `block_anonymous_users`, `allow_ascii_control`, `playlist_max_per_user`
+
+`chat_antiflood_params` contains `burst`, `sustained`, and the derived `cooldown`.
+The flat `chat_antiflood_burst` and `chat_antiflood_sustained` fields are aliases
+for the nested values; updating an alias preserves the other current value.
 
 #### `PUT /channels/:channel/settings`
 
 Update one or more settings. Unknown keys are silently ignored.
+
+Updates use the channel UI's existing per-field validation and side effects.
+Successful changes mark the channel options dirty and broadcast `channelOpts`.
+Validation failures return HTTP 400 with an `error` message. As in the UI,
+valid fields in a mixed request can be applied even when another field fails.
 
 **Body:**
 

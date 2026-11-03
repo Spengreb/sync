@@ -89,14 +89,14 @@ module.exports.init = function (newDB) {
     } else {
         db = new Database();
     }
-    db.knex.raw('select 1 from dual')
+    return db.knex.raw('select 1 from dual')
             .catch(error => {
                 LOGGER.error('Initial database connection failed: %s', error.stack);
                 process.exit(1);
             })
             .then(() => tables.initTables())
+            .then(() => require('./database/update').checkVersion())
             .then(() => {
-                require('./database/update').checkVersion();
                 module.exports.loadAnnouncement();
                 require('@cytube/mediaquery/lib/provider/youtube').setCache(
                     new MetadataCacheDB(db)

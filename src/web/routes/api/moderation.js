@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../database');
 const { botAuth, requireRank, getLoadedChannel } = require('./middleware');
+const botActor = require('./bot-actor');
 
 const router = express.Router({ mergeParams: true });
 
@@ -46,10 +47,19 @@ router.post('/users/:name/ban', botAuth, requireRank(3), async (req, res) => {
         return res.status(403).json({ error: 'Cannot ban a user with equal or higher rank' });
     }
 
-    chan.modules.kickban.ban(targetName, '', reason, req.bot.name, (err) => {
-        if (err) return res.status(400).json({ error: err });
+    if (!chan.modules.kickban) {
+        return res.status(503).json({ error: 'Ban module not available' });
+    }
+
+    chan.refCounter.ref('BotAPI::banName');
+    try {
+        await chan.modules.kickban.banName(botActor(req.bot), targetName, reason);
         res.json({ success: true });
-    });
+    } catch (error) {
+        res.status(400).json({ error: error.message || String(error) });
+    } finally {
+        chan.refCounter.unref('BotAPI::banName');
+    }
 });
 
 router.delete('/users/:name/ban', botAuth, requireRank(3), (req, res) => {

@@ -4,45 +4,57 @@ import Promise from 'bluebird';
 const LOGGER = require('@calzoneman/jsli')('database/update');
 
 const DB_VERSION = 22;
-var hasUpdates = [];
 
-module.exports.checkVersion = function () {
-    db.query("SELECT `key`,`value` FROM `meta` WHERE `key`=?", ["db_version"], function (err, rows) {
-        if (err) {
-            return;
-        }
-
-        if (rows.length === 0) {
-            LOGGER.warn("db_version key missing from database.  Setting " +
-                              "db_version=" + DB_VERSION);
-            db.query("INSERT INTO `meta` (`key`, `value`) VALUES ('db_version', ?)",
-                     [DB_VERSION],
-                     function (_err) {
-            });
-        } else {
-            var v = parseInt(rows[0].value);
-            if (v >= DB_VERSION) {
-                return;
-            }
-            var next = function () {
-                hasUpdates.push(v);
-                LOGGER.info("Updated database to version " + v);
-                if (v < DB_VERSION) {
-                    update(v++, next);
-                } else {
-                    db.query("UPDATE `meta` SET `value`=? WHERE `key`='db_version'",
-                             [DB_VERSION]);
-                }
-            };
-            update(v++, next);
-        }
+function query(sql, params) {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (error, rows) => error ? reject(error) : resolve(rows));
     });
+}
+
+module.exports.checkVersion = async function () {
+    const rows = await query("SELECT `key`,`value` FROM `meta` WHERE `key`=?", ["db_version"]);
+    if (rows.length === 0) {
+        LOGGER.warn("db_version key missing from database.  Setting db_version=" + DB_VERSION);
+        await query("INSERT INTO `meta` (`key`, `value`) VALUES ('db_version', ?)", [DB_VERSION]);
+        return;
+    }
+
+    let version = Number(rows[0].value);
+    if (!Number.isInteger(version) || version < 7) {
+        throw new Error(`Cannot auto-upgrade database version ${rows[0].value}`);
+    }
+
+    while (version < DB_VERSION) {
+        await new Promise((resolve, reject) => {
+            update(version, error => error ? reject(error) : resolve());
+        });
+        // DDL is not transactional in MySQL. Record each completed migration so
+        // a later failure does not falsely mark the whole upgrade as complete.
+        await query("UPDATE `meta` SET `value`=? WHERE `key`='db_version'", [version + 1]);
+        version++;
+        LOGGER.info("Updated database to version " + version);
+    }
 };
+
+function migrationQuery(sql, callback) {
+    db.query(sql, (error, rows) => {
+        // initTables creates missing tables using the latest schema. A restart
+        // may also repeat part of a migration after a later statement failed.
+        const duplicateColumn = /^ALTER TABLE \S+ ADD COLUMN /i.test(sql) && error &&
+            (error.code === 'ER_DUP_FIELDNAME' || error.errno === 1060);
+        const duplicateIndex = /^ALTER TABLE \S+ ADD INDEX /i.test(sql) && error &&
+            (error.code === 'ER_DUP_KEYNAME' || error.errno === 1061);
+        if (duplicateColumn || duplicateIndex) {
+            LOGGER.info('Schema change already applied: %s', sql);
+            return callback(null, rows);
+        }
+        callback(error, rows);
+    });
+}
 
 function update(version, cb) {
     if (version < 7) {
-        LOGGER.error('Cannot auto-upgrade: db_version 4 is too old!');
-        process.exit(1);
+        cb(new Error(`Cannot auto-upgrade database version ${version}`));
     } else if (version < 8) {
         addUsernameDedupeColumn(cb);
     } else if (version < 9) {
@@ -78,22 +90,21 @@ function update(version, cb) {
 
 function addUsernameDedupeColumn(cb) {
     LOGGER.info("Adding name_dedupe column on the users table");
-    db.query("ALTER TABLE users ADD COLUMN name_dedupe VARCHAR(20) UNIQUE DEFAULT NULL", (error) => {
+    migrationQuery("ALTER TABLE users ADD COLUMN name_dedupe VARCHAR(20) UNIQUE DEFAULT NULL", (error) => {
         if (error) {
             LOGGER.error(`Unable to add name_dedupe column: ${error}`);
-        } else {
-            cb();
         }
+        cb(error);
     });
 }
 
 function populateUsernameDedupeColumn(cb) {
     const dbUsers = require("./accounts");
     LOGGER.info("Populating name_dedupe column on the users table");
-    db.query("SELECT id, name FROM users WHERE name_dedupe IS NULL", (err, rows) => {
+    migrationQuery("SELECT id, name FROM users WHERE name_dedupe IS NULL", (err, rows) => {
         if (err) {
             LOGGER.error("Unable to perform database upgrade to add dedupe column: " + err);
-            return;
+            return cb(err);
         }
 
         Promise.map(rows, row => {
@@ -111,21 +122,22 @@ function populateUsernameDedupeColumn(cb) {
             cb();
         }).catch(error => {
             LOGGER.error("Unable to perform database upgrade to add dedupe column: " + (error.stack ? error.stack : error));
+            cb(error);
         });
     });
 }
 
 function addChannelLastLoadedColumn(cb) {
-    db.query("ALTER TABLE channels ADD COLUMN last_loaded TIMESTAMP NOT NULL DEFAULT 0", error => {
+    migrationQuery("ALTER TABLE channels ADD COLUMN last_loaded TIMESTAMP NOT NULL DEFAULT 0", error => {
         if (error) {
             LOGGER.error(`Failed to add last_loaded column: ${error}`);
-            return;
+            return cb(error);
         }
 
-        db.query("ALTER TABLE channels ADD INDEX i_last_loaded (last_loaded)", error => {
+        migrationQuery("ALTER TABLE channels ADD INDEX i_last_loaded (last_loaded)", error => {
             if (error) {
                 LOGGER.error(`Failed to add index on last_loaded column: ${error}`);
-                return;
+                return cb(error);
             }
 
             cb();
@@ -134,16 +146,16 @@ function addChannelLastLoadedColumn(cb) {
 }
 
 function addChannelOwnerLastSeenColumn(cb) {
-    db.query("ALTER TABLE channels ADD COLUMN owner_last_seen TIMESTAMP NOT NULL DEFAULT 0", error => {
+    migrationQuery("ALTER TABLE channels ADD COLUMN owner_last_seen TIMESTAMP NOT NULL DEFAULT 0", error => {
         if (error) {
             LOGGER.error(`Failed to add owner_last_seen column: ${error}`);
-            return;
+            return cb(error);
         }
 
-        db.query("ALTER TABLE channels ADD INDEX i_owner_last_seen (owner_last_seen)", error => {
+        migrationQuery("ALTER TABLE channels ADD INDEX i_owner_last_seen (owner_last_seen)", error => {
             if (error) {
                 LOGGER.error(`Failed to add index on owner_last_seen column: ${error}`);
-                return;
+                return cb(error);
             }
 
             cb();
@@ -152,7 +164,7 @@ function addChannelOwnerLastSeenColumn(cb) {
 }
 
 function addUserInactiveColumn(cb) {
-    db.query("ALTER TABLE users ADD COLUMN inactive BOOLEAN DEFAULT FALSE", error => {
+    migrationQuery("ALTER TABLE users ADD COLUMN inactive BOOLEAN DEFAULT FALSE", error => {
         if (error) {
             LOGGER.error(`Failed to add inactive column: ${error}`);
             cb(error);
@@ -163,7 +175,7 @@ function addUserInactiveColumn(cb) {
 }
 
 function addShowsNotesAndColorColumns(cb) {
-    db.query(
+    migrationQuery(
         "ALTER TABLE channel_shows ADD COLUMN notes MEDIUMTEXT CHARACTER SET utf8mb4 NULL",
         error => {
             if (error) {
@@ -172,7 +184,7 @@ function addShowsNotesAndColorColumns(cb) {
                 return;
             }
 
-            db.query(
+            migrationQuery(
                 "ALTER TABLE channel_shows ADD COLUMN color VARCHAR(7) NULL",
                 error => {
                     if (error) {
@@ -189,7 +201,7 @@ function addShowsNotesAndColorColumns(cb) {
 }
 
 function addCalendarIntegrationTables(cb) {
-    db.query(
+    migrationQuery(
         "CREATE TABLE IF NOT EXISTS channel_calendar_integrations (" +
         "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
         "channel_id INT UNSIGNED NOT NULL," +
@@ -216,7 +228,7 @@ function addCalendarIntegrationTables(cb) {
                 return;
             }
 
-            db.query(
+            migrationQuery(
                 "CREATE TABLE IF NOT EXISTS channel_show_external_events (" +
                 "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
                 "channel_id INT UNSIGNED NOT NULL," +
@@ -249,7 +261,7 @@ function addCalendarIntegrationTables(cb) {
 }
 
 function addCalendarIntegrationAuditColumns(cb) {
-    db.query(
+    migrationQuery(
         "ALTER TABLE channel_calendar_integrations ADD COLUMN connected_by VARCHAR(20) NULL",
         error => {
             if (error) {
@@ -258,7 +270,7 @@ function addCalendarIntegrationAuditColumns(cb) {
                 return;
             }
 
-            db.query(
+            migrationQuery(
                 "ALTER TABLE channel_calendar_integrations ADD COLUMN updated_by VARCHAR(20) NULL",
                 error => {
                     if (error) {
@@ -274,7 +286,7 @@ function addCalendarIntegrationAuditColumns(cb) {
 }
 
 function addShowsEstimatedEndColumn(cb) {
-    db.query(
+    migrationQuery(
         "ALTER TABLE channel_shows ADD COLUMN estimated_end_at BIGINT NULL",
         error => {
             if (error) {
@@ -288,7 +300,7 @@ function addShowsEstimatedEndColumn(cb) {
 }
 
 function addGoogleEventIndexTable(cb) {
-    db.query(
+    migrationQuery(
         "CREATE TABLE IF NOT EXISTS channel_google_event_index (" +
         "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
         "channel_id INT UNSIGNED NOT NULL," +
@@ -319,7 +331,7 @@ function addGoogleEventIndexTable(cb) {
 }
 
 function addShowsNotificationPlanColumn(cb) {
-    db.query(
+    migrationQuery(
         "ALTER TABLE channel_shows ADD COLUMN notification_plan MEDIUMTEXT CHARACTER SET utf8mb4 NULL",
         error => {
             if (error) {
@@ -333,7 +345,7 @@ function addShowsNotificationPlanColumn(cb) {
 }
 
 function addNotificationIntegrationTables(cb) {
-    db.query(
+    migrationQuery(
         "CREATE TABLE IF NOT EXISTS channel_notification_integrations (" +
         "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
         "channel_id INT UNSIGNED NOT NULL," +
@@ -357,7 +369,7 @@ function addNotificationIntegrationTables(cb) {
                 return;
             }
 
-            db.query(
+            migrationQuery(
                 "CREATE TABLE IF NOT EXISTS channel_show_notification_deliveries (" +
                 "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
                 "channel_id INT UNSIGNED NOT NULL," +
@@ -394,7 +406,7 @@ function addNotificationIntegrationTables(cb) {
 }
 
 function addOidcTables(cb) {
-    db.query(
+    migrationQuery(
         "CREATE TABLE IF NOT EXISTS oidc_providers (" +
         "id VARCHAR(64) NOT NULL PRIMARY KEY," +
         "display_name VARCHAR(100) NOT NULL," +
@@ -416,7 +428,7 @@ function addOidcTables(cb) {
                 return;
             }
 
-            db.query(
+            migrationQuery(
                 "CREATE TABLE IF NOT EXISTS user_oidc_identities (" +
                 "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
                 "user_id INT UNSIGNED NOT NULL," +
@@ -446,7 +458,7 @@ function addOidcTables(cb) {
 }
 
 function dropOidcProviderForeignKey(cb) {
-    db.query(
+    migrationQuery(
         "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE " +
         "WHERE TABLE_SCHEMA = DATABASE() " +
         "AND TABLE_NAME = 'user_oidc_identities' " +
@@ -454,9 +466,8 @@ function dropOidcProviderForeignKey(cb) {
         "AND REFERENCED_TABLE_NAME = 'oidc_providers'",
         (error, rows) => {
             if (error) {
-                LOGGER.warn(`Could not inspect OIDC provider foreign key, continuing: ${error}`);
-                cb();
-                return;
+                LOGGER.error(`Could not inspect OIDC provider foreign key: ${error}`);
+                return cb(error);
             }
 
             if (!rows || rows.length === 0) {
@@ -464,11 +475,12 @@ function dropOidcProviderForeignKey(cb) {
                 return;
             }
 
-            db.query(
+            migrationQuery(
                 `ALTER TABLE user_oidc_identities DROP FOREIGN KEY \`${rows[0].CONSTRAINT_NAME}\``,
                 error2 => {
                     if (error2) {
-                        LOGGER.warn(`Could not drop OIDC provider foreign key, continuing: ${error2}`);
+                        LOGGER.error(`Could not drop OIDC provider foreign key: ${error2}`);
+                        return cb(error2);
                     }
                     cb();
                 }
